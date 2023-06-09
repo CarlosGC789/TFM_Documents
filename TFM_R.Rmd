@@ -1,0 +1,4763 @@
+---
+title: "TFM_Code"
+author: "Carlos Gómez Costas"
+date: "7/3/2023"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+#Possible libraries
+library(dplyr)
+library(tidymodels)
+library(corrr)
+library(embed)
+library(discrim)
+library(parsnip)
+library(workflows)
+library(gridExtra)
+library(knitr)
+library(kableExtra)
+library(ggplot2)
+library(reshape2)
+library(mice)
+library(corrplot)
+library(GGally)
+library(tidyr)
+library(lubridate)
+library(cowplot)
+library(lubridate)
+library(reshape2)
+library(caret)
+
+```
+
+
+```{r}
+#Load datasets
+tfm_year = read.csv("~/tfm_year.txt", sep="")
+tfm_monthly = read.csv("~/tfm_monthly.txt", sep="")
+tfm_daily = read.csv("~/tfm_daily.txt", sep="")
+tfm_hour = read.csv("~/tfm_hour.txt", sep="")
+
+```
+
+# CORRELATIONS WITH DIFFERENT DATASETS
+
+```{r}
+#Daily dataset
+correlate(tfm_daily, method = "pearson")
+cor_elec=correlate(tfm_daily)
+cor_elec %>%
+shave() %>%
+rplot(print_cor = TRUE)
+```
+
+```{r}
+#Now, with the daily with colors and better
+# read for the correlations
+library(dplyr)
+library(mice)
+day=tfm_daily
+
+#Eliminate the Date variable
+day=day[,-1]
+
+#Eliminate the first rows where there are lot of NAs
+day=day[-c(1:743),]
+
+#Rename the rows
+rownames(day)=c(1:2575)
+
+#Imputation for NAs
+imputacion = mice(day, m = 5, method = "pmm", seed = 123)
+day = mice::complete(imputacion)
+
+
+```
+
+
+```{r}
+cor_matrix = cor(day)
+
+corrplot(cor_matrix, method = "circle")
+
+#Plot the correlations from blue to red depending of
+#the correlation with names in a way to read it okay
+ggplot(data = melt(cor_matrix)) + 
+  geom_tile(aes(Var2, Var1, fill = value)) +
+  scale_fill_gradient2(low = "blue", high = "red", midpoint = 0, 
+                       limit = c(-1,1), name = "Correlation") +
+  coord_fixed() +theme_minimal() + theme(axis.text.x = element_text(angle = 90, vjust = 1, 
+                                    size = 8, hjust = 1))
+```
+
+```{r}
+#Daily dataset
+correlate(tfm_daily, method = "pearson")
+cor_elec=correlate(tfm_daily)
+cor_elec %>%
+shave() %>%
+rplot(print_cor = TRUE)
+```
+
+```{r}
+#Monthly dataset
+correlate(tfm_monthly, method = "pearson")
+cor_elec=correlate(tfm_monthly)
+cor_elec %>%
+shave() %>%
+rplot(print_cor = TRUE)
+```
+
+```{r}
+#year dataset
+tfm_year$Date=as.character(tfm_year$Date)
+correlate(tfm_year, method = "pearson")
+cor_elec=correlate(tfm_year)
+cor_elec %>%
+shave() %>%
+rplot(print_cor = TRUE)
+```
+
+# DESCRIPTIVE ANALYSIS
+
+```{r}
+# Histogram and density plot of the response variable in year dataset to see its distribution
+
+h1=qplot(tfm_year$Electricity, geom = "histogram", main = "Histogram of Electricity in Year dataset", xlab = "Electricity")+theme(plot.title = element_text(size = 10.5))
+d1=qplot(tfm_year$Electricity, geom = "density", xlab = "Electricity", main= "Density of Electricity in Year dataset")+theme(plot.title = element_text(size = 10.5))
+
+```
+
+
+```{r, include=FALSE}
+datos_imputados = mice(tfm_year, method = "mean")
+```
+
+
+```{r}
+# Emphasis on the variable "Electricity" with other relevant variables such as "Consumption", "Gas_Price" and "CO2_Price", showing their correlation and making pairs between the variables using the year dataset.
+
+
+datos_seleccionados = complete(datos_imputados, action = "long", include = TRUE, all = TRUE)
+variables = c("Electricity", "Consumption", "Gas_Price", "CO2_Price")
+correlacion = cor(datos_seleccionados[, variables], use = "pairwise.complete.obs")
+corrplot(correlacion, method = "circle")
+```
+
+
+```{r, warning=FALSE}
+# Now I show their density, pairs and correlations between them.
+ggpairs(datos_seleccionados[, variables])
+```
+
+
+```{r, warning=FALSE}
+# I analyze the relationship between "Electricity" and "Gas_Price" or "CO2_Price" by means of a scatter plot using the year dataset. 
+
+ggplot(tfm_year, aes(x = Gas_Price, y = Electricity)) + 
+  geom_point() + labs(x = "Gas Price", y = "Electricity Price") +
+  ggtitle("Scatter plot Electricity vs Gas Price")
+
+ggplot(tfm_year, aes(x = CO2_Price, y = Electricity)) + 
+  geom_point() + labs(x = "CO2 Price", y = "Electricity Price") +
+  ggtitle("Scatter plot Electricity vs CO2 Price")
+
+
+```
+
+```{r, warning=FALSE}
+
+# Build a bar chart with the total installed power separated by colors for each energy using the year dataset
+
+data=tfm_year
+data=data[-c(1:5),]
+
+df_long = data %>% 
+  pivot_longer(cols = starts_with("Installed_Power"), names_to = "Fuente", 
+               values_to = "Potencia")
+df_long$Fuente = gsub("Installed_Power_", "", df_long$Fuente)
+
+ggplot(df_long, aes(x = Date, y = Potencia, fill = Fuente)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(x = "Year", y = "Installed Power", fill = "Energy") +
+  ggtitle("Total installed power") +
+  scale_fill_discrete(name = "Energy")+
+  theme(axis.text.x = element_text(size = 6))
+
+```
+
+```{r}
+# Analyze the distribution of the response variable "Electricity" by means of a histogram or a density plot using the month dataset
+
+h2=qplot(tfm_monthly$Electricity, geom = "histogram", main = "Histogram of Electricity in Month dataset", xlab = "Electricity")+theme(plot.title = element_text(size = 10.5))
+d2=qplot(tfm_monthly$Electricity, geom = "density", main = "Density of Electricity in Month dataset", xlab = "Electricity")+theme(plot.title = element_text(size = 10.5))
+```
+
+
+
+
+
+```{r, include=FALSE}
+datos_imputados = mice(tfm_monthly, method = "mean")
+```
+
+
+```{r, warning=FALSE}
+# Emphasis on the variable "Electricity" with other relevant variables such as "Consumption", "Gas_Price" and "CO2_Price", showing their correlation and making pairs between the variables using the month dataset.
+
+
+datos_seleccionados = complete(datos_imputados, action = "long", include = TRUE, all = TRUE)
+variables = c("Electricity", "Consumption", "Gas_Price", "CO2_Price")
+correlacion = cor(datos_seleccionados[, variables], use = "pairwise.complete.obs")
+corrplot(correlacion, method = "circle")
+
+# Now I show their density, pairs and correlations between them.
+
+ggpairs(datos_seleccionados[, variables])
+```
+
+
+```{r, warning=FALSE}
+# I analyze the relationship between "Electricity" and "Gas_Price" or "CO2_Price" by means of a scatter plot using the month dataset.
+
+ggplot(tfm_monthly, aes(x = Gas_Price, y = Electricity)) + 
+  geom_point() + labs(x = "Gas Price", y = "Electricity Price") +
+  ggtitle("Scatter plot Electricity vs Gas Price")
+
+ggplot(tfm_monthly, aes(x = CO2_Price, y = Electricity)) + 
+  geom_point() + labs(x = "CO2 Price", y = "Electricity Price") +
+  ggtitle("Scatter plot Electricity vs CO2 Price")
+```
+
+```{r}
+# Analyze the distribution of the response variable "Electricity" by means of a histogram or a density plot using the daily dataset
+
+h3=qplot(tfm_daily$Electricity, geom = "histogram", main = "Histogram of Electricity in Day dataset", xlab = "Electricity")+theme(plot.title = element_text(size = 10.5))
+d3=qplot(tfm_daily$Electricity, geom = "density", main = "Density of Electricity in Day dataset", xlab = "Electricity")+theme(plot.title = element_text(size = 10.5))
+
+```
+
+```{r}
+# Join all the previous plots of histograms and densities in one for better visualization
+plot_grid(h1,d1,h2,d2,h3,d3, ncol = 2)
+
+```
+
+
+```{r, include=FALSE}
+datos_imputados = mice(tfm_daily, method = "mean")
+```
+
+
+```{r, warning=FALSE}
+# Emphasis on the variable "Electricity" with other relevant variables such as "Consumption", "Gas_Price" and "CO2_Price", showing their correlation and making pairs between the variables using the daily dataset.
+
+datos_seleccionados = complete(datos_imputados, action = "long", include = TRUE, all = TRUE)
+variables = c("Electricity", "Consumption", "Gas_Price", "CO2_Price")
+correlacion = cor(datos_seleccionados[, variables], use = "pairwise.complete.obs")
+corrplot(correlacion, method = "circle")
+
+# Now I show their density, pairs and correlations between them.
+ggpairs(datos_seleccionados[, variables])
+```
+
+
+```{r, warning=FALSE}
+# I analyze the relationship between "Electricity" and "Gas_Price" or "CO2_Price" by means of a scatter plot using the month dataset.
+
+ggplot(tfm_daily, aes(x = Gas_Price, y = Electricity)) + 
+  geom_point() + labs(x = "Gas Price", y = "Electricity Price") +
+  ggtitle("Scatter plot Electricity vs Gas Price")
+
+ggplot(tfm_daily, aes(x = CO2_Price, y = Electricity)) + 
+  geom_point() + labs(x = "CO2 Price", y = "Electricity Price") +
+  ggtitle("Scatter plot Electricity vs CO2 Price")
+```
+
+```{r}
+# Boxplot and violin plot of electricity prices differentiating between weekends and weekdays using daily dataset
+
+prueba=tfm_daily
+prueba$Weekday = wday(prueba$Date, label = TRUE)
+
+prueba$Day_Type = ifelse(prueba$Weekday %in% c("sá\\.", "do\\."), "Weekend", "Weekday")
+
+
+# Boxplot
+ggplot(prueba, aes(x = Day_Type, y = Electricity, fill=Day_Type)) +
+  geom_boxplot(width=0.5) + labs(title = "Boxplot of Electricity on weekdays and weekends", x = "Type of day", y = "Electricity")+ theme(legend.position = "none")
+
+# Violin plot
+ggplot(prueba, aes(x = Day_Type, y = Electricity, fill=Day_Type)) +
+  geom_violin() + labs(title = "Violin plot of Electricity on weekdays and weekends", x = "Type of day", y = "Electricity")+ theme(legend.position = "none")
+```
+
+```{r}
+#Same as before for each day of the week
+
+prueba=tfm_daily
+prueba$Weekday = wday(prueba$Date, label = TRUE)
+
+# Boxplot
+ggplot(prueba, aes(x = Weekday, y = Electricity, fill=Weekday)) +
+  geom_boxplot() +
+  scale_x_discrete(labels = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")) +
+  labs(title = "Boxplot of Electricity on each day of the week", x = "Type of day", y = "Electricity")+ theme(legend.position = "none")
+
+# Violin plot
+ggplot(prueba, aes(x = Weekday, y = Electricity, fill=Weekday)) +
+  geom_violin() +
+  scale_x_discrete(labels = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")) +
+  labs(title = "Violin plot of Electricity on each day of the week", x = "Type of day", y = "Electricity")+ theme(legend.position = "none")
+```
+
+
+```{r}
+# Line graph of the variable Electricity over time to see the trend of the variable Electricity over the years using hour dataset.
+
+data= tfm_hour
+data$Date = ymd_hms(data$Date)
+data$Date = as.POSIXct(data$Date, format = "%Y-%m-%d %H:%M:%S") + hours(1)
+
+ggplot(data, aes(x=Date, y=Electricity)) +
+  geom_line() + labs(title="Electricity price evolution",x="Date", y="Electricity price") +
+  theme_bw()
+
+```
+
+```{r, fig.height= 3.5}
+
+# Bar chart of the Electricity variable for each hour of the day: you can see the hours of the day when the price of electricity is higher or lower. the hours of the day when the price of electricity is higher or lower. It will be grouped using the mean and median
+
+data=tfm_hour
+data$Date = ymd_hms(data$Date)
+data$Date = as.POSIXct(data$Date, format = "%Y-%m-%d %H:%M:%S") + hours(1)
+
+# Group the data by time of day and calculate the median electricity price.
+
+data_hourly = data %>%
+  mutate(hour=as.numeric(format(Date, "%H"))) %>%
+  group_by(hour) %>%
+  summarize(median_electricity=median(Electricity))
+
+# Bar chart using MEDIAN
+p1=ggplot(data_hourly, aes(x=hour, y=median_electricity)) +
+  geom_bar(stat="identity", fill="#0072B2") +
+  labs(title="Median electricity price per hour of the day",x="Hour", y="Electricity price") +
+  theme(plot.title = element_text(size = 9))
+
+# Group the data by time of day and calculate the mean electricity price.
+data_hourly = data %>%
+  mutate(hour=as.numeric(format(Date, "%H"))) %>%
+  group_by(hour) %>%
+  summarize(mean_electricity=mean(Electricity))
+
+# Bar chart using MEAN
+p2=ggplot(data_hourly, aes(x=hour, y=mean_electricity)) +
+  geom_bar(stat="identity", fill="#0072B2") +
+  labs(title="Mean electricity price per hour of the day",x="Hour", y="Electricity price") +
+  theme(plot.title = element_text(size = 9))
+
+
+plot_grid(p1,p2,ncol = 2)
+
+```
+
+```{r, fig.height=3.5}
+
+# The same as before but with the variable Solar photovoltaic, a variable highly dependent on the time of day.
+
+data=tfm_hour
+data = data[complete.cases(data$Solar_Photovoltaic), ]
+data$Date = ymd_hms(data$Date)
+data$Date = as.POSIXct(data$Date, format = "%Y-%m-%d %H:%M:%S") + hours(1)
+
+# Group the data by time of day and calculate the median of the energy production
+
+data_hourly = data %>%
+  mutate(hour=as.numeric(format(Date, "%H"))) %>%
+  group_by(hour) %>%
+  summarize(median_solar=median(Solar_Photovoltaic))
+
+# Bar chart using MEDIAN
+p1=ggplot(data_hourly, aes(x=hour, y=median_solar)) +
+  geom_bar(stat="identity", fill="#0072B2") +
+  labs(title="Median solar production per hour of the day",x="Hour", y="Solar photov. production") +
+  theme(plot.title = element_text(size = 9))
+
+# Group the data by time of day and calculate the mean of the energy production
+data_hourly = data %>%
+  mutate(hour=as.numeric(format(Date, "%H"))) %>%
+  group_by(hour) %>%
+  summarize(mean_solar=mean(Solar_Photovoltaic))
+
+# Bar chart using MEAN
+p2=ggplot(data_hourly, aes(x=hour, y=mean_solar)) +
+  geom_bar(stat="identity", fill="#0072B2") +
+  labs(title="Mean solar production per hour of the day",x="Hour", y="Solar photov. production") +
+  theme(plot.title = element_text(size = 9))
+
+
+plot_grid(p1,p2,ncol = 2)
+
+```
+
+```{r, warning=FALSE}
+# Stacked area graph of the different energy sources in order to visualize the amount generated from each energy source in the total electricity generation. The year dataset is used in this case and is done in two ways: 1. looking directly at the total energy and 2. dividing by the electricity price to see its incidence with the annual electricity value.
+
+data=tfm_year
+
+data_stacked = data %>%
+  pivot_longer(cols=c(Wind, Solar_Photovoltaic, Solar_Thermal, Other_Renewables, Hydraulic, Nuclear, Combined_cycle, Coal, Cogeneration), names_to="Fuente", values_to="Generación") %>%
+  group_by(year=as.numeric(Date), Fuente) %>%
+  summarize(Generación_prop=mean(Generación))
+
+# Stacked area graph of the different energy sources using total energy.
+ggplot(data_stacked, aes(x=year, y=Generación_prop, fill=Fuente)) +
+  geom_area() + labs(title="Total generation by energy source",x="Date", y="Energy generated", fill="Fuente de energía") +
+  theme_bw() + scale_fill_manual(values=c("#0072B2", "#009E73", "#F0E442", "#D55E00", "#CC79A7", "#E69F00", "#56B4E9", "#999999", "#000000"))
+
+data_stacked = data %>%
+  pivot_longer(cols=c(Wind, Solar_Photovoltaic, Solar_Thermal, Other_Renewables, Hydraulic, Nuclear, Combined_cycle, Coal, Cogeneration), names_to="Fuente", values_to="Generación") %>%
+  group_by(year=as.numeric(Date), Fuente) %>%
+  summarize(Generación_prop=mean(Generación/Electricity))
+
+# Stacked area graph of the different energy sources dividing by the electricity price.
+ggplot(data_stacked, aes(x=year, y=Generación_prop, fill=Fuente)) +
+  geom_area() + labs(title="Contribution of each energy source to total energy generation",x="Date", y="Energy contribution", fill="Fuente de energía") +
+  theme_bw() + scale_fill_manual(values=c("#0072B2", "#009E73", "#F0E442", "#D55E00", "#CC79A7", "#E69F00", "#56B4E9", "#999999", "#000000"))
+
+
+```
+
+```{r, warning=FALSE}
+# In this plot geom_point() is used to plot the points and aes(color = CO2_price) is used to set the CO2 price as a color variable. Scale_color_gradient() is used to adjust the color scale and labs() is used to add labels to the axes and the
+#color legend. We use this graph to visualize the relationships between electricity price, gas price and CO2 price at the same time. We use the hour dataset
+
+data=tfm_hour
+
+#  We create the scatter plot
+ggplot(data, aes(x = Gas_price, y = Electricity)) +
+  geom_point(aes(color = CO2_price)) + scale_color_gradient(low = "green", high = "red") +
+  labs(title="Electricity vs Gas using CO2 color range",x = "Gas price", y = "Electricity price", color = "CO2 price")
+
+```
+
+
+
+```{r}
+# Heat map of trade balances of the three countries in the year dataset.
+data=tfm_year[c(15:23),c(25:27)]
+
+datos_saldo = data %>%
+  mutate(year = tfm_year$Date[15:23]) %>%
+  melt(id.vars="year", variable.name ="Pais", value.name = "Saldo_comercial")
+
+ggplot(datos_saldo, aes(x = Pais, y = factor(year), fill = Saldo_comercial)) +
+  geom_tile() + scale_fill_gradient(low = "red", high = "green", na.value = "white") +
+  labs(title="Heatmap of trade balances by year",x = "Country", y = "Year", fill = "Year balance")
+
+```
+
+```{r}
+# Evolution of the production of different energies over the years using the hour dataset
+
+datos=tfm_hour
+
+datos %>%
+  mutate(year = lubridate::year(Date), month = lubridate::month(Date)) %>%
+  group_by(year, month) %>%
+  summarise(across(c(Wind:Cogeneration), sum)) %>%
+  pivot_longer(cols = Wind:Cogeneration, names_to = "Fuente", values_to = "Produccion") %>%
+  ggplot(aes(x = year + (month - 1)/12, y = Produccion, color = Fuente)) +
+  geom_line() + labs(title = "Evolution of the production of the different energies over the years",x = "Date", y = "Generation", color = "Energy")+
+  theme(plot.title = element_text(size = 11.5))
+```
+
+```{r}
+# Boxplots to compare the generation of some energy sources by season of the year using the hour dataset
+
+datos=tfm_hour
+datos$Date = ymd_hms(datos$Date)
+datos$Date = as.POSIXct(datos$Date, format = "%Y-%m-%d %H:%M:%S") + hours(1)
+
+datos %>% 
+  mutate(Season = ifelse(month(Date) %in% c(12, 1, 2), "Winter",
+                            ifelse(month(Date) %in% c(6, 7, 8), "Summer", "Autumn-Spring"))) %>%
+  gather(key = "Energy", value = "Generation", -Date, -Season,-Balance_France,-Balance_Portugal,-Balance_Morocco,-CO2_price,-Consumption,-Electricity,-Gas_price,-Other_Renewables,-Solar_Thermal,-Cogeneration,-Solar_Photovoltaic) %>%
+  ggplot(aes(x = Season, y = Generation, fill = Energy)) +
+  geom_boxplot() + ylab("Generation") + ggtitle("Generation by energy source and season")
+```
+
+```{r}
+#Four scatter plots comparing the response variables with hydraulic energy, nuclear, coal and wind using the daily dataset.
+
+data=tfm_daily
+
+p1=ggplot(data, aes(x = Hydraulic, y = Electricity)) + 
+  geom_point() + labs(x = "Hydraulic", y = "Electricity Price") +
+  ggtitle("Scatter plot Electricity vs Hydraulic")
+
+p2=ggplot(data, aes(x = Nuclear, y = Electricity)) + 
+  geom_point() + labs(x = "Nuclear", y = "Electricity Price") +
+  ggtitle("Scatter plot Electricity vs Nuclear")
+
+p3=ggplot(data, aes(x = Coal, y = Electricity)) + 
+  geom_point() + labs(x = "Coal", y = "Electricity Price") +
+  ggtitle("Scatter plot Electricity vs Coal")
+
+p4=ggplot(data, aes(x = Wind, y = Electricity)) + 
+  geom_point() + labs(x = "Wind", y = "Electricity Price") +
+  ggtitle("Scatter plot Electricity vs Wind")
+
+plot_grid(p1,p2,p3,p4,ncol = 2)
+```
+
+```{r}
+# The same as before but limiting the electricity price values to only those whose price is less than 175.
+
+data=tfm_daily
+data=subset(data, Electricity <= 175)
+
+
+p1=ggplot(data, aes(x = Hydraulic, y = Electricity)) + 
+  geom_point() + labs(x = "Hydraulic", y = "Electricity Price") +
+  ggtitle("Scatter plot Electricity vs Hydraulic")
+
+p2=ggplot(data, aes(x = Nuclear, y = Electricity)) + 
+  geom_point() + labs(x = "Nuclear", y = "Electricity Price") +
+  ggtitle("Scatter plot Electricity vs Nuclear")
+
+p3=ggplot(data, aes(x = Coal, y = Electricity)) + 
+  geom_point() + labs(x = "Coal", y = "Electricity Price") +
+  ggtitle("Scatter plot Electricity vs Coal")
+
+p4=ggplot(data, aes(x = Wind, y = Electricity)) + 
+  geom_point() + labs(x = "Wind", y = "Electricity Price") +
+  ggtitle("Scatter plot Electricity vs Wind")
+
+plot_grid(p1,p2,p3,p4,ncol = 2)
+
+```
+
+
+# REGRESSION
+
+## FOR DAILY DATASET WE USE THE YEAR 2017 AND FOR THE MONTH DATASET WE USE APRIL 2016
+```{r}
+
+prueba=tfm_daily
+
+#Eliminate the Date variables
+prueba=prueba[,-1]
+
+# Eliminate rows with lots of NAs in the price of gas
+prueba=prueba[-c(1:743),]
+
+#Rename the rows
+rownames(prueba)=c(1:2575)
+#Save the response variable
+y = prueba$Electricity
+#Eliminate the response variable to standardize
+prueba=prueba[,-15]
+# Standardization of predictor variables
+data_scaled = scale(prueba)
+
+# Combination of the response variable and standardized predictor variables
+data_scaled = cbind(y, data_scaled)
+
+day=as.data.frame(data_scaled)
+names(day)[1]="Electricity"
+
+```
+
+```{r}
+prueba=tfm_hour
+# Remove rows with lots of NAs in the price of gas variables
+prueba=prueba[-c(1:17832),]
+#Remove the Date variable
+prueba=prueba[,-1]
+#Rename the rows
+rownames(prueba)=c(1:61791)
+#Save the response variable and eliminate it to standardize
+y = prueba$Electricity
+prueba=prueba[,-1]
+
+# Standardization of predictor variables
+data_scaled = scale(prueba)
+
+# Combination of the response variable and standardized predictor variables
+data_scaled = cbind(y, data_scaled)
+
+hour=as.data.frame(data_scaled)
+names(hour)[1]="Electricity"
+
+#Remove the Balance_Morocco variable
+hour=hour[,-16]
+
+```
+
+```{r}
+library(dplyr)
+library(mice)
+
+#Imputation for daily dataset
+imputacion = mice(day, m = 5, method = "pmm", seed = 123)
+day = mice::complete(imputacion)
+
+
+```
+
+```{r}
+library(mice)
+
+#Imputation for hour dataset
+imputacion = mice(hour, m = 5, method = "pmm", seed = 123)
+hour = mice::complete(imputacion)
+
+```
+
+
+```{r}
+library(caret)
+
+#We choose rows of 2017 for train set
+in_train=c(354:718)
+trainday = day[in_train,]
+testday = day[-in_train,]
+
+#We choose rows of April 2016 for train set
+in_train=c(1870:2589)
+trainhour = hour[ in_train,]
+testhour = hour[-in_train,]
+
+```
+
+
+
+```{r}
+# Model with all the predictors for 2017
+model=lm(Electricity~.,data = trainday)
+summary(model)
+```
+
+```{r}
+# Model with all the predictors for April 2016
+model=lm(Electricity~.,data = trainhour)
+summary(model)
+```
+### AIC
+```{r}
+# Search for the best AIC value model for 2017
+model = lm(Electricity ~., data = trainday)
+library(MASS)
+best_model = stepAIC(model, direction="both", trace=FALSE)
+summary(best_model)
+
+```
+
+```{r}
+# Search for the best AIC value model for April 2016
+model = lm(Electricity ~., data = trainhour)
+library(MASS)
+best_model = stepAIC(model, direction="both", trace=FALSE)
+summary(best_model)
+
+```
+
+### BIC
+
+
+```{r}
+# Search for the best BIC value model for 2017
+model = lm(Electricity ~., data = trainday)
+library(MASS)
+best_model = stepAIC(model,k=log(nrow(trainday)), direction="both", trace=FALSE)
+summary(best_model)
+
+```
+
+```{r}
+# Search for the best BIC value model for April 2016
+model = lm(Electricity ~., data = trainhour)
+library(MASS)
+best_model = stepAIC(model,k=log(nrow(trainhour)), direction="both", trace=FALSE)
+summary(best_model)
+
+```
+
+### BACKWARDS SELECTION
+
+```{r}
+# Backwards selection for 2017
+modall = lm(Electricity ~., data = trainday)
+summary(modall)$coefficients
+drop1(modall,test="F")
+
+mod1=update(modall,.~.-Other_Renewables)
+drop1(mod1,test="F")
+
+mod2=update(mod1,.~.-Steam_Turbine)
+drop1(mod2,test="F")
+
+mod3=update(mod2,.~.-CO2_Price)
+drop1(mod3,test="F")
+
+#The final model
+modfin=lm(Electricity ~ Hydraulic + Wind + Solar_Photovoltaic + Solar_Thermal + Pumping_Turbine + Nuclear + Combined_cycle + Coal + Diesel_Engine + 
+    Gas_Turbine + Cogeneration + Consumption + Gas_Price + Balance_France + 
+    Balance_Portugal + Balance_Morocco, data=trainday)
+summary(modfin)
+
+```
+
+
+```{r}
+#Backwards selection for April 2016
+modall = lm(Electricity ~., data = trainhour)
+summary(modall)$coefficients
+drop1(modall,test="F")
+
+mod1=update(modall,.~.-Solar_Thermal)
+drop1(mod1,test="F")
+
+#The final model
+modfin=lm(Electricity ~ Consumption + Wind + Solar_Photovoltaic + Other_Renewables + 
+    Hydraulic + Nuclear + Combined_cycle + Coal + Cogeneration + 
+    Gas_price + CO2_price + Balance_France + Balance_Portugal, data=trainhour)
+summary(modfin)
+```
+
+### FORWARD SELECTION
+
+```{r}
+#Forward selection for 2017
+mod0=lm(Electricity~1, data=trainday)
+
+#The add functions includes each predictor
+add1(mod0,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Combined_cycle+Coal+Diesel_Engine+
+                   Gas_Turbine+Steam_Turbine+Cogeneration+Consumption+Gas_Price+
+                   CO2_Price+Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod1=lm(Electricity~Gas_Price, data=trainday)
+#The add functions includes each predictor
+add1(mod1,scope=(~.+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Combined_cycle+Coal+Diesel_Engine+
+                   Gas_Turbine+Steam_Turbine+Cogeneration+Consumption+Hydraulic+
+                   CO2_Price+Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod2=lm(Electricity~Gas_Price+Consumption, data=trainday)
+#The add functions includes each predictor
+add1(mod2,scope=(~.+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Combined_cycle+Coal+Diesel_Engine+
+                   Gas_Turbine+Steam_Turbine+Cogeneration+Hydraulic+
+                   CO2_Price+Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod3=lm(Electricity~Gas_Price+Consumption+Combined_cycle, data=trainday)
+#The add functions includes each predictor
+add1(mod3,scope=(~.+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Coal+Diesel_Engine+
+                   Gas_Turbine+Steam_Turbine+Cogeneration+Hydraulic+
+                   CO2_Price+Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod4=lm(Electricity~Gas_Price+Consumption+Combined_cycle+
+          Cogeneration, data=trainday)
+#The add functions includes each predictor
+add1(mod4,scope=(~.+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Coal+Diesel_Engine+
+                   Gas_Turbine+Steam_Turbine+Hydraulic+
+                   CO2_Price+Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod5=lm(Electricity~Gas_Price+Consumption+Combined_cycle+
+          Cogeneration+Wind, data=trainday)
+#The add functions includes each predictor
+add1(mod5,scope=(~.+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Coal+Diesel_Engine+
+                   Gas_Turbine+Steam_Turbine+Hydraulic+
+                   CO2_Price+Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod6=lm(Electricity~Gas_Price+Consumption+Combined_cycle+
+          Cogeneration+Wind+Solar_Thermal, data=trainday)
+#The add functions includes each predictor
+add1(mod6,scope=(~.+Solar_Photovoltaic+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Coal+Diesel_Engine+
+                   Gas_Turbine+Steam_Turbine+Hydraulic+
+                   CO2_Price+Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod7=lm(Electricity~Gas_Price+Consumption+Combined_cycle+
+          Cogeneration+Wind+Solar_Thermal+Balance_France, data=trainday)
+#The add functions includes each predictor
+add1(mod7,scope=(~.+Solar_Photovoltaic+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Coal+Diesel_Engine+
+                   Gas_Turbine+Steam_Turbine+Hydraulic+
+                   CO2_Price+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod8=lm(Electricity~Gas_Price+Consumption+Combined_cycle+
+          Cogeneration+Wind+Solar_Thermal+Balance_France+
+          Pumping_Turbine, data=trainday)
+#The add functions includes each predictor
+add1(mod8,scope=(~.+Solar_Photovoltaic+
+                   Other_Renewables+
+                   Nuclear+Coal+Diesel_Engine+
+                   Gas_Turbine+Steam_Turbine+Hydraulic+
+                   CO2_Price+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod9=lm(Electricity~Gas_Price+Consumption+Combined_cycle+
+          Cogeneration+Wind+Solar_Thermal+Balance_France+
+          Pumping_Turbine+Gas_Turbine, data=trainday)
+#The add functions includes each predictor
+add1(mod9,scope=(~.+Solar_Photovoltaic+
+                   Other_Renewables+
+                   Nuclear+Coal+Diesel_Engine+
+                   Steam_Turbine+Hydraulic+
+                   CO2_Price+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod10=lm(Electricity~Gas_Price+Consumption+Combined_cycle+
+          Cogeneration+Wind+Solar_Thermal+Balance_France+
+          Pumping_Turbine+Gas_Turbine+Diesel_Engine, data=trainday)
+#The add functions includes each predictor
+add1(mod10,scope=(~.+Solar_Photovoltaic+
+                   Other_Renewables+
+                   Nuclear+Coal+
+                   Steam_Turbine+Hydraulic+
+                   CO2_Price+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod11=lm(Electricity~Gas_Price+Consumption+Combined_cycle+
+          Cogeneration+Wind+Solar_Thermal+Balance_France+
+          Pumping_Turbine+Gas_Turbine+Diesel_Engine+Balance_Portugal, data=trainday)
+#The add functions includes each predictor
+add1(mod11,scope=(~.+Solar_Photovoltaic+
+                   Other_Renewables+
+                   Nuclear+Coal+
+                   Steam_Turbine+Hydraulic+
+                   CO2_Price+Balance_Morocco),
+     test="F",data=trainday)
+
+mod12=lm(Electricity~Gas_Price+Consumption+Combined_cycle+
+          Cogeneration+Wind+Solar_Thermal+Balance_France+
+          Pumping_Turbine+Gas_Turbine+Diesel_Engine+Balance_Portugal+
+           CO2_Price, data=trainday)
+#The add functions includes each predictor
+add1(mod12,scope=(~.+Solar_Photovoltaic+
+                   Other_Renewables+
+                   Nuclear+Coal+
+                   Steam_Turbine+Hydraulic+
+                   Balance_Morocco),
+     test="F",data=trainday)
+
+mod13=lm(Electricity~Gas_Price+Consumption+Combined_cycle+
+          Cogeneration+Wind+Solar_Thermal+Balance_France+
+          Pumping_Turbine+Gas_Turbine+Diesel_Engine+Balance_Portugal+
+           CO2_Price+Coal, data=trainday)
+#The add functions includes each predictor
+add1(mod13,scope=(~.+Solar_Photovoltaic+
+                   Other_Renewables+
+                   Nuclear+
+                   Steam_Turbine+Hydraulic+
+                   Balance_Morocco),
+     test="F",data=trainday)
+
+mod14=lm(Electricity~Gas_Price+Consumption+Combined_cycle+
+          Cogeneration+Wind+Solar_Thermal+Balance_France+
+          Pumping_Turbine+Gas_Turbine+Diesel_Engine+Balance_Portugal+
+           CO2_Price+Coal+Nuclear, data=trainday)
+#The add functions includes each predictor
+add1(mod14,scope=(~.+Solar_Photovoltaic+
+                   Other_Renewables+
+                   Steam_Turbine+Hydraulic+
+                   Balance_Morocco),
+     test="F",data=trainday)
+
+mod15=lm(Electricity~Gas_Price+Consumption+Combined_cycle+
+          Cogeneration+Wind+Solar_Thermal+Balance_France+
+          Pumping_Turbine+Gas_Turbine+Diesel_Engine+Balance_Portugal+
+           CO2_Price+Coal+Nuclear+Hydraulic, data=trainday)
+#The add functions includes each predictor
+add1(mod15,scope=(~.+Solar_Photovoltaic+
+                   Other_Renewables+
+                   Steam_Turbine+
+                   Balance_Morocco),
+     test="F",data=trainday)
+
+mod16=lm(Electricity~Gas_Price+Consumption+Combined_cycle+
+          Cogeneration+Wind+Solar_Thermal+Balance_France+
+          Pumping_Turbine+Gas_Turbine+Diesel_Engine+Balance_Portugal+
+           CO2_Price+Coal+Nuclear+Hydraulic+Balance_Morocco, data=trainday)
+#The add functions includes each predictor
+add1(mod16,scope=(~.+Solar_Photovoltaic+
+                   Other_Renewables+
+                   Steam_Turbine),
+     test="F",data=trainday)
+
+mod17=lm(Electricity~Gas_Price+Consumption+Combined_cycle+
+          Cogeneration+Wind+Solar_Thermal+Balance_France+
+          Pumping_Turbine+Gas_Turbine+Diesel_Engine+Balance_Portugal+
+           CO2_Price+Coal+Nuclear+Hydraulic+Balance_Morocco+
+           Solar_Photovoltaic, data=trainday)
+#The add functions includes each predictor
+add1(mod17,scope=(~.+
+                   Other_Renewables+
+                   Steam_Turbine),
+     test="F",data=trainday)
+
+#Summary of the final model
+summary(mod17)
+
+```
+
+```{r}
+#Forward selection for April 2016
+mod0=lm(Electricity~1, data=trainhour)
+#The add functions includes each predictor
+add1(mod0,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+
+                   Nuclear+Combined_cycle+Coal+Cogeneration+Consumption+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod1=lm(Electricity~Hydraulic, data=trainhour)
+#The add functions includes each predictor
+add1(mod1,scope=(~.+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+
+                   Nuclear+Combined_cycle+Coal+Cogeneration+Consumption+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod2=lm(Electricity~Hydraulic+Consumption, data=trainhour)
+#The add functions includes each predictor
+add1(mod2,scope=(~.+Wind+Solar_Thermal+
+                   Other_Renewables+
+                   Nuclear+Combined_cycle+Coal+Cogeneration+Solar_Photovoltaic+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod3=lm(Electricity~Hydraulic+Consumption+Wind, data=trainhour)
+#The add functions includes each predictor
+add1(mod3,scope=(~.+Solar_Thermal+
+                   Other_Renewables+
+                   Nuclear+Combined_cycle+Coal+Cogeneration+Solar_Photovoltaic+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod4=lm(Electricity~Hydraulic+Consumption+Wind+Gas_price, data=trainhour)
+#The add functions includes each predictor
+add1(mod4,scope=(~.+Solar_Thermal+
+                   Other_Renewables+
+                   Nuclear+Combined_cycle+Coal+Cogeneration+Solar_Photovoltaic+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod5=lm(Electricity~Hydraulic+Consumption+Wind+Gas_price+
+          Cogeneration, data=trainhour)
+#The add functions includes each predictor
+add1(mod5,scope=(~.+Solar_Thermal+
+                   Other_Renewables+
+                   Nuclear+Combined_cycle+Coal+Solar_Photovoltaic+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod6=lm(Electricity~Hydraulic+Consumption+Wind+Gas_price+
+          Cogeneration+Combined_cycle, data=trainhour)
+#The add functions includes each predictor
+add1(mod6,scope=(~.+Solar_Thermal+
+                   Other_Renewables+
+                   Nuclear+Coal+Solar_Photovoltaic+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod7=lm(Electricity~Hydraulic+Consumption+Wind+Gas_price+
+          Cogeneration+Combined_cycle+Solar_Photovoltaic, data=trainhour)
+#The add functions includes each predictor
+add1(mod7,scope=(~.+Solar_Thermal+
+                   Other_Renewables+
+                   Nuclear+Coal+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod8=lm(Electricity~Hydraulic+Consumption+Wind+Gas_price+
+          Cogeneration+Combined_cycle+Solar_Photovoltaic+Nuclear, data=trainhour)
+#The add functions includes each predictor
+add1(mod8,scope=(~.+Solar_Thermal+
+                   Other_Renewables+Coal+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod9=lm(Electricity~Hydraulic+Consumption+Wind+Gas_price+
+          Cogeneration+Combined_cycle+Solar_Photovoltaic+Nuclear+
+          Other_Renewables, data=trainhour)
+#The add functions includes each predictor
+add1(mod9,scope=(~.+Solar_Thermal+Coal+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod10=lm(Electricity~Hydraulic+Consumption+Wind+Gas_price+
+          Cogeneration+Combined_cycle+Solar_Photovoltaic+Nuclear+
+          Other_Renewables+CO2_price, data=trainhour)
+#The add functions includes each predictor
+add1(mod10,scope=(~.+Solar_Thermal+Coal+
+                   Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod11=lm(Electricity~Hydraulic+Consumption+Wind+Gas_price+
+          Cogeneration+Combined_cycle+Solar_Photovoltaic+Nuclear+
+          Other_Renewables+CO2_price+Balance_France, data=trainhour)
+#The add functions includes each predictor
+add1(mod11,scope=(~.+Solar_Thermal+Coal+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod12=lm(Electricity~Hydraulic+Consumption+Wind+Gas_price+
+          Cogeneration+Combined_cycle+Solar_Photovoltaic+Nuclear+
+          Other_Renewables+CO2_price+Balance_France+
+           Balance_Portugal, data=trainhour)
+#The add functions includes each predictor
+add1(mod12,scope=(~.+Solar_Thermal+Coal),
+     test="F",data=trainhour)
+
+mod13=lm(Electricity~Hydraulic+Consumption+Wind+Gas_price+
+          Cogeneration+Combined_cycle+Solar_Photovoltaic+Nuclear+
+          Other_Renewables+CO2_price+Balance_France+
+           Balance_Portugal+Coal, data=trainhour)
+#The add functions includes each predictor
+add1(mod13,scope=(~.+Solar_Thermal),
+     test="F",data=trainhour)
+
+#Summary of the final model
+summary(mod13)
+
+```
+
+### Ridge regression
+
+```{r}
+#Ridge regression for 2017
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=trainday)
+fit.ridge=glmnet(X,trainday$Electricity,alpha=0)
+
+#Plot estimated coefficients for different values of the ridge parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to find the optimal lambda
+cv.out = cv.glmnet(X, trainday$Electricity, alpha = 0, nfolds=10) #alpha=0 means Ridge Regression
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients using the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+
+#A way to show the value of the coefficients in a column plot
+modelo = glmnet(x = X,
+            y = trainday$Electricity,
+            alpha = 0,
+            lambda= cv.out$lambda.min)
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) + geom_col() +
+  labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+```{r}
+#Ridge regression for April 2016
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=trainhour)
+
+fit.ridge=glmnet(X,trainhour$Electricity,alpha=0)
+#Plot estimated coefficients for different values of the ridge parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to finde the optimal lambda
+cv.out = cv.glmnet(X, trainhour$Electricity, alpha = 0, nfolds=10) #alpha=0 means Ridge Regression
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#Predicted coefficients with the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+
+#A way to show the value of the coefficients in a column plot
+modelo = glmnet(x = X,
+            y = trainhour$Electricity,
+            alpha = 0,
+            lambda = cv.out$lambda.min)
+
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+### LASSO
+
+```{r}
+#LASSO for 2017
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=trainday)
+
+fit.ridge=glmnet(X,trainday$Electricity,alpha=1)
+#Plot estimated coefficients for different values of the LASSO parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to find the optimal lambda
+cv.out = cv.glmnet(X, trainday$Electricity, alpha = 1, nfolds=10) #alpha=1 means LASSO
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients with the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+
+#A way to show the value of the coefficients in a column plot
+modelo = glmnet(x = X,
+            y = trainday$Electricity,
+            alpha = 1,
+            lambda = cv.out$lambda.min)
+
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+```{r}
+# LASSO for April 2016
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=trainhour)
+
+fit.ridge=glmnet(X,trainhour$Electricity,alpha=1)
+#Plot estimated coefficients for different values of the LASSO parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to find the optimal lambda
+cv.out = cv.glmnet(X, trainhour$Electricity, alpha = 1, nfolds=10) #alpha=1 means LASSO
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients using the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+
+#A way to show the value of the coefficients in a column plot
+modelo = glmnet(x = X,
+            y = trainhour$Electricity,
+            alpha = 1,
+            lambda = cv.out$lambda.min
+          )
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+
+
+#### WE INTRODUCE DUMMY VARIABLES FOR MACHINE LEARNING
+
+```{r}
+# For 2017 we introduce weekdays dummy
+library(lubridate)
+prueba=tfm_daily
+prueba$Weekday = wday(prueba$Date, label = TRUE)
+#Create the dummy variables
+dummy_week = model.matrix(~ Weekday - 1, data = prueba)
+colnames(dummy_week)=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thusday", "Friday", "Saturday")
+#Combine the daily dataset with the new dummy variables
+prueba = cbind(prueba, dummy_week)
+
+#Eliminate the Weekday and Date variables
+prueba=prueba[,-22]
+prueba=prueba[,-1]
+
+#Eliminate rows with lots of NAs in the price of gas variables
+prueba=prueba[-c(1:743),]
+#Rename the rows
+rownames(prueba)=c(1:2575)
+#Save the response variable and dummy variables
+y = prueba$Electricity
+week=prueba[,c(21:27)]
+#Eliminate the response and dummy variables to standardize
+prueba=prueba[,-c(15,21:27)]
+
+# Standardization of predictor variables
+data_scaled = scale(prueba)
+# Combination of the response variable, the standardized predictor variables and the dummy variables
+data_scaled = cbind(y, data_scaled, week)
+
+day=as.data.frame(data_scaled)
+names(day)[1]="Electricity"
+
+```
+
+
+```{r}
+library(dplyr)
+library(mice)
+
+#Imputation of 2017
+imputacion = mice(day, m = 5, method = "pmm", seed = 123)
+day = mice::complete(imputacion)
+
+
+```
+
+
+
+```{r}
+library(caret)
+
+#We choose rows of 2017 for train set
+in_train=c(354:718)
+trainday = day[in_train,]
+testday = day[-in_train,]
+```
+
+THE SAME WITH HOUR DATASET
+
+```{r}
+# For April 2016 (hour dataset) we introduce weekdays and hour dummy variables
+prueba=tfm_hour
+prueba$Weekday = wday(prueba$Date, label = TRUE)
+
+#We create weekday dummy variables
+dummy_week = model.matrix(~ Weekday - 1, data = prueba)
+colnames(dummy_week)=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thusday", "Friday", "Saturday")
+# Combine the dataset with the dummy variables
+prueba = cbind(prueba, dummy_week)
+
+# Modify the format of hours and create dummy variables for each hour of the day
+prueba$Date = ymd_hms(prueba$Date)
+prueba$Date = as.POSIXct(prueba$Date, format = "%Y-%m-%d %H:%M:%S") + hours(1)
+prueba$Hourday=hour(prueba$Date)
+prueba$Hourday=as.character(prueba$Hourday)
+dummy_hour = model.matrix(~ Hourday - 1, data = prueba)
+colnames(dummy_hour)=c("H0", "H1", "H10", "H11",  "H12", "H13", "H14", "H15", "H16", "H17", "H18", "H19",
+                      "H2", "H20", "H21", "H22",  "H23", "H3", "H4", "H5", "H6", "H7", "H8", "H9")
+#Combine the dataset with these new dummy variables
+prueba = cbind(prueba, dummy_hour)
+
+#Remove rows with lot of NAs in the price of gas variables
+prueba=prueba[-c(1:17832),]
+#Remove the Date variable
+prueba=prueba[,-1]
+#Rename the rows
+rownames(prueba)=c(1:61791)
+#Remove the Weekday and Hourday variables
+prueba=prueba[,-c(17,25)]
+#Save the response and dummy variables
+y = prueba$Electricity
+weekhour=prueba[,c(17:47)]
+#Remove the response and dummy variables to standardize the rest
+prueba=prueba[,-c(1,17:47)]
+
+# Standardization of predictor variables
+data_scaled = scale(prueba)
+
+# Combination of the response variable, the standardized predictor variables and the dummy variables
+data_scaled = cbind(y, data_scaled,weekhour)
+
+
+hour=as.data.frame(data_scaled)
+names(hour)[1]="Electricity"
+
+#Remove Balance_Morocco variable
+hour=hour[,-16]
+```
+
+
+```{r}
+library(mice)
+
+#Imputation for April 2016
+imputacion = mice(hour, m = 5, method = "rf", seed = 123)
+hour = mice::complete(imputacion)
+```
+
+
+```{r}
+#We choose rows of April 2016 for train set
+in_train=c(1870:2589)
+trainhour = hour[ in_train,]
+testhour = hour[-in_train,]
+
+```
+
+
+
+### Random forest
+
+```{r}
+#In each machine learning method, 8 fold cross validation will be performed with the training base.
+ctrl = trainControl(method = "cv", number = 8 ,
+                     verboseIter=T)
+```
+
+
+````{r}
+# Obtain the best model for 2017 using random forest with ntree=200 and tuning for mtry
+rf.train = train(Electricity ~., 
+                  method = "rf", 
+                  data = trainday,
+                  preProcess = c("center", "scale"),
+                  ntree=200,
+                  tuneGrid = expand.grid(mtry=c(5:25)),
+                  trControl=ctrl)
+#To see the best model
+print(rf.train)
+
+#Plot the variable importance
+rf_imp = varImp(rf.train, scale = F)
+plot(rf_imp, scales = list(y = list(cex = .85)))
+```
+
+
+````{r}
+# Obtain the best model for April 2016 using random forest with ntree=200 and tuning for mtry
+rf.train = train(Electricity ~., 
+                  method = "rf", 
+                  data = trainhour,
+                  preProcess = c("center", "scale"),
+                  ntree=200,
+                  tuneGrid = expand.grid(mtry=c(5:15)),
+                  trControl=ctrl)
+# See the best model
+print(rf.train)
+
+#Plot the varible importance
+rf_imp = varImp(rf.train, scale = F)
+plot(rf_imp, scales = list(y = list(cex = .57)))
+```
+
+### SVM
+
+```{r}
+# Obtain the best model for 2017 using SVM with tuning for C and sigma
+svmFit = train(Electricity ~., method = "svmRadial", 
+                data = trainday,
+                preProcess = c("center", "scale"),
+                tuneGrid = expand.grid(C = c(.25, .5, 1,10,50,100,250,500,1000),
+                                      sigma = c(0,0.0005,0.001,0.01,.05,0.1)),
+                trControl=ctrl)
+#To see the best model
+print(svmFit)
+
+#Plot the variable importance
+svmimp = varImp(svmFit, scale = F)
+plot(svmimp, scales = list(y = list(cex = .85)))
+```
+
+
+```{r}
+# Obtain the best model for April 2016 using SVM with tuning for C and sigma
+svmFit = train(Electricity ~., method = "svmRadial", 
+                data = trainhour,
+                preProcess = c("center", "scale"),
+                tuneGrid = expand.grid(C = c(.25, .5, 1,10,50,100,250,500,1000),
+                                      sigma = c(0,0.0005,0.001,0.01,.05,0.1)),
+                trControl=ctrl)
+#To see the best model
+print(svmFit)
+
+#Plot the variable importance
+svmimp = varImp(svmFit, scale = F)
+plot(svmimp, scales = list(y = list(cex = .57)))
+```
+
+### KNN
+
+```{r}
+# Obtain the best model for 2017 using KNN with tuning for k (number of neighbors)
+knnFit = train(Electricity ~ ., 
+                method = "knn", 
+                data = trainday,
+                preProcess = c("center", "scale"),
+                tuneLength = 20,
+                trControl = ctrl)
+#To see the best model
+print(knnFit)
+
+#Plot the variable importance
+knnimp = varImp(knnFit, scale = F)
+plot(knnimp, scales = list(y = list(cex = .85)))
+```
+
+```{r}
+# Obtain the best model for April 2016 using KNN with tuning for k (number of neighbors)
+knnFit = train(Electricity ~ ., 
+                method = "knn", 
+                data = trainhour,
+                preProcess = c("center", "scale"),
+                tuneLength = 20,
+                trControl = ctrl)
+#To see the best model
+print(knnFit)
+
+#Plot the variable importance
+knnimp = varImp(knnFit, scale = F)
+plot(knnimp, scales = list(y = list(cex = .57)))
+```
+
+
+### XGB
+
+```{r, include=FALSE}
+# Obtain the best model for 2017 using XGB with tuning for nrounds, eta, max_depth, gamma, colsample_bytree and min_child_weight
+xgb_grid = expand.grid(
+  nrounds = c(100,1000,2000),
+  eta = c(0.5,0.1,0.001),
+  max_depth = c(2,4,6),
+  gamma = c(0,10,100),
+  colsample_bytree = c(0.2,0.4,0.8),
+  min_child_weight = c(1,10,50),
+  subsample = 1)
+
+xgb.train = train(Electricity ~ .,  data=trainday,
+                  trControl = ctrl,
+                  maximize = F,
+                  tuneGrid = xgb_grid,
+                  preProcess = c("center", "scale"),
+                  method = "xgbTree",
+                  verbosity=0)
+```
+
+
+```{r}
+#To see the best model
+print(xgb.train)
+
+#Plot the variable importance
+xgb_imp = varImp(xgb.train, scale = F)
+plot(xgb_imp, scales = list(y = list(cex = .85)))
+```
+
+```{r, include=FALSE}
+# Obtain the best model for April 2016 using XGB with tuning for nrounds, eta, max_depth, gamma, colsample_bytree and min_child_weight
+xgb_grid = expand.grid(
+  nrounds = c(100,1000,2000),
+  eta = c(0.5,0.1,0.001),
+  max_depth = c(2,4,6),
+  gamma = c(0,10,100),
+  colsample_bytree = c(0.2,0.4,0.8),
+  min_child_weight = c(1,10,50),
+  subsample = 1)
+
+xgb.train = train(Electricity ~ .,  data=trainhour,
+                  trControl = ctrl,
+                  maximize = F,
+                  tuneGrid = xgb_grid,
+                  preProcess = c("center", "scale"),
+                  method = "xgbTree",
+                  verbosity=0)
+```
+
+
+```{r}
+#To see the best model
+print(xgb.train)
+
+#Plot variable importance
+xgb_imp = varImp(xgb.train, scale = F)
+plot(xgb_imp, scales = list(y = list(cex = .57)))
+```
+
+
+
+
+
+## FOR DAILY DATASET WE CHOOSE YEAR 2022 AND FOR MONTHLY DATASET WE CHOOSE APRIL 2022
+
+```{r}
+# FOR 2022
+prueba=tfm_daily
+#Remove the Date variable
+prueba=prueba[,-1]
+#Remove the rows with NAs in the price of gas variable
+prueba=prueba[-c(1:743),]
+#Rename the rows
+rownames(prueba)=c(1:2575)
+#Save the response variable
+y = prueba$Electricity
+#Remove the response variable to standardize the rest
+prueba=prueba[,-15]
+# Standardization of predictor variables
+data_scaled = scale(prueba)
+# Combination of the response variable and standardized predictor variables
+data_scaled = cbind(y, data_scaled)
+
+day=as.data.frame(data_scaled)
+names(day)[1]="Electricity"
+
+```
+
+```{r}
+#FOR April 2022
+prueba=tfm_hour
+#Remove rows with NAs in the price of gas variable
+prueba=prueba[-c(1:17832),]
+#Remove the Date variable
+prueba=prueba[,-1]
+#Rename the rows
+rownames(prueba)=c(1:61791)
+#Save the response variable
+y = prueba$Electricity
+#Remove the response variable to standardize the rest
+prueba=prueba[,-1]
+# Standardization of predictor variables
+data_scaled = scale(prueba)
+#Combination of the response variable and standardized predictor variables
+data_scaled = cbind(y, data_scaled)
+
+hour=as.data.frame(data_scaled)
+names(hour)[1]="Electricity"
+#Remove Balance_Morocco variable
+hour=hour[,-16]
+```
+
+```{r}
+library(dplyr)
+library(mice)
+
+#Imputation for 2022
+imputacion = mice(day, m = 5, method = "pmm", seed = 123)
+day = mice::complete(imputacion)
+```
+
+```{r}
+#Imputation for April 2022
+imputacion = mice(hour, m = 5, method = "pmm", seed = 123)
+hour = mice::complete(imputacion)
+```
+
+```{r}
+library(caret)
+#We choose the rows for 2022
+in_train=c(2180:2544)
+trainday = day[in_train,]
+testday = day[-in_train,]
+
+#We choose the rows for April 2022
+in_train=c(54448:55167)
+trainhour = hour[ in_train,]
+testhour = hour[-in_train,]
+
+```
+
+
+
+```{r}
+#Model with all the predictors for 2022
+model=lm(Electricity~.,data = trainday)
+summary(model)
+```
+
+```{r}
+#Model with all the predictors for April 2022
+model=lm(Electricity~.,data = trainhour)
+summary(model)
+```
+
+### AIC
+```{r}
+#Search for AIC's best value model for 2022
+model = lm(Electricity ~., data = trainday)
+library(MASS)
+best_model = stepAIC(model, direction="both", trace=FALSE)
+summary(best_model)
+
+```
+
+```{r}
+# Search for AIC's best value model for April 2022
+model = lm(Electricity ~., data = trainhour)
+library(MASS)
+best_model = stepAIC(model, direction="both", trace=FALSE)
+summary(best_model)
+
+```
+
+### BIC
+
+
+```{r}
+# Search for BIC's best value model for 2022
+model = lm(Electricity ~., data = trainday)
+library(MASS)
+best_model = stepAIC(model,k=log(nrow(trainday)), direction="both", trace=FALSE)
+summary(best_model)
+
+```
+
+```{r}
+# Search for BIC's best value model for April 2022
+model = lm(Electricity ~., data = trainhour)
+library(MASS)
+best_model = stepAIC(model,k=log(nrow(trainhour)), direction="both", trace=FALSE)
+summary(best_model)
+
+```
+
+### BACKWARDS SELECTION
+
+```{r}
+#Backwards selection for 2022
+modall = lm(Electricity ~., data = trainday)
+summary(modall)$coefficients
+drop1(modall,test="F")
+
+mod1=update(modall,.~.-Diesel_Engine)
+drop1(mod1,test="F")
+
+mod2=update(mod1,.~.-Wind)
+drop1(mod2,test="F")
+
+mod3=update(mod2,.~.-Balance_Portugal)
+drop1(mod3,test="F")
+
+mod4=update(mod3,.~.-Pumping_Turbine)
+drop1(mod4,test="F")
+
+mod5=update(mod4,.~.-Solar_Thermal)
+drop1(mod5,test="F")
+
+mod6=update(mod5,.~.-Coal)
+drop1(mod6,test="F")
+
+mod7=update(mod6,.~.-Hydraulic)
+drop1(mod7,test="F")
+
+#The final model and its summary
+modfin=lm(Electricity ~ Solar_Photovoltaic + Other_Renewables + Nuclear + 
+    Combined_cycle + Gas_Turbine + Steam_Turbine + Cogeneration + 
+    Consumption + Gas_Price + CO2_Price + Balance_France + Balance_Morocco, data=trainday)
+summary(modfin)
+
+```
+
+
+```{r}
+#Backwards selection for April 2022
+modall = lm(Electricity ~., data = trainhour)
+summary(modall)$coefficients
+drop1(modall,test="F")
+
+mod1=update(modall,.~.-CO2_price)
+drop1(mod1,test="F")
+
+#The final model and its summary
+modfin=lm(Electricity ~ Consumption + Wind + Solar_Photovoltaic + Solar_Thermal + 
+    Other_Renewables + Hydraulic + Nuclear + Combined_cycle + 
+    Coal + Cogeneration + Gas_price + Balance_France + Balance_Portugal, data=trainhour)
+summary(modfin)
+
+```
+
+### FORWARD SELECTION
+
+```{r}
+#Forward selection for 2022
+mod0=lm(Electricity~1, data=trainday)
+#The add functions includes each predictor
+add1(mod0,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Combined_cycle+Coal+Diesel_Engine+
+                   Gas_Turbine+Steam_Turbine+Cogeneration+Consumption+Gas_Price+
+                   CO2_Price+Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod1=lm(Electricity~Gas_Price, data=trainday)
+#The add functions includes each predictor
+add1(mod1,scope=(~.+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Combined_cycle+Coal+Diesel_Engine+
+                   Gas_Turbine+Steam_Turbine+Cogeneration+Consumption+Hydraulic+
+                   CO2_Price+Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod2=lm(Electricity~Gas_Price+Cogeneration, data=trainday)
+#The add functions includes each predictor
+add1(mod2,scope=(~.+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Combined_cycle+Coal+Diesel_Engine+
+                   Gas_Turbine+Steam_Turbine+Consumption+Hydraulic+
+                   CO2_Price+Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod3=lm(Electricity~Gas_Price+Cogeneration+Wind, data=trainday)
+#The add functions includes each predictor
+add1(mod3,scope=(~.+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Combined_cycle+Coal+Diesel_Engine+
+                   Gas_Turbine+Steam_Turbine+Consumption+Hydraulic+
+                   CO2_Price+Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod4=lm(Electricity~Gas_Price+Cogeneration+Wind+CO2_Price, data=trainday)
+#The add functions includes each predictor
+add1(mod4,scope=(~.+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Combined_cycle+Coal+Diesel_Engine+
+                   Gas_Turbine+Steam_Turbine+Consumption+Hydraulic+
+                   Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod5=lm(Electricity~Gas_Price+Cogeneration+Wind+CO2_Price+Gas_Turbine, data=trainday)
+#The add functions includes each predictor
+add1(mod5,scope=(~.+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Combined_cycle+Coal+Diesel_Engine+
+                   Steam_Turbine+Consumption+Hydraulic+
+                   Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=trainday)
+
+mod6=lm(Electricity~Gas_Price+Cogeneration+Wind+CO2_Price+Gas_Turbine+
+          Balance_Portugal, data=trainday)
+#The add functions includes each predictor
+add1(mod6,scope=(~.+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Combined_cycle+Coal+Diesel_Engine+
+                   Steam_Turbine+Consumption+Hydraulic+
+                   Balance_France+Balance_Morocco),
+     test="F",data=trainday)
+
+mod7=lm(Electricity~Gas_Price+Cogeneration+Wind+CO2_Price+Gas_Turbine+
+          Balance_Portugal+Nuclear, data=trainday)
+#The add functions includes each predictor
+add1(mod7,scope=(~.+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Combined_cycle+Coal+Diesel_Engine+
+                   Steam_Turbine+Consumption+Hydraulic+
+                   Balance_France+Balance_Morocco),
+     test="F",data=trainday)
+
+mod8=lm(Electricity~Gas_Price+Cogeneration+Wind+CO2_Price+Gas_Turbine+
+          Balance_Portugal+Nuclear+Combined_cycle, data=trainday)
+#The add functions includes each predictor
+add1(mod8,scope=(~.+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Coal+Diesel_Engine+
+                   Steam_Turbine+Consumption+Hydraulic+
+                   Balance_France+Balance_Morocco),
+     test="F",data=trainday)
+
+mod9=lm(Electricity~Gas_Price+Cogeneration+Wind+CO2_Price+Gas_Turbine+
+          Balance_Portugal+Nuclear+Combined_cycle+Balance_Morocco, data=trainday)
+#The add functions includes each predictor
+add1(mod9,scope=(~.+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Coal+Diesel_Engine+
+                   Steam_Turbine+Consumption+Hydraulic+
+                   Balance_France),
+     test="F",data=trainday)
+
+#The summary of the final model
+summary(mod9)
+
+```
+
+```{r}
+#Forward selection for April 2022
+mod0=lm(Electricity~1, data=trainhour)
+#The add functions includes each predictor
+add1(mod0,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Solar_Thermal+Other_Renewables+
+                   Nuclear+Combined_cycle+Coal+Cogeneration+Consumption+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod1=lm(Electricity~Hydraulic, data=trainhour)
+#The add functions includes each predictor
+add1(mod1,scope=(~.+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+
+                   Nuclear+Combined_cycle+Coal+Cogeneration+Consumption+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod2=lm(Electricity~Hydraulic+Cogeneration, data=trainhour)
+#The add functions includes each predictor
+add1(mod2,scope=(~.+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+
+                   Nuclear+Combined_cycle+Coal+Consumption+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod3=lm(Electricity~Hydraulic+Cogeneration+Solar_Photovoltaic, data=trainhour)
+#The add functions includes each predictor
+add1(mod3,scope=(~.+Wind+Solar_Thermal+
+                   Other_Renewables+
+                   Nuclear+Combined_cycle+Coal+Consumption+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod4=lm(Electricity~Hydraulic+Cogeneration+Solar_Photovoltaic+Nuclear, data=trainhour)
+#The add functions includes each predictor
+add1(mod4,scope=(~.+Wind+Solar_Thermal+
+                   Other_Renewables+
+                   Combined_cycle+Coal+Consumption+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod5=lm(Electricity~Hydraulic+Cogeneration+Solar_Photovoltaic+Nuclear+Wind, data=trainhour)
+#The add functions includes each predictor
+add1(mod5,scope=(~.+Solar_Thermal+
+                   Other_Renewables+
+                   Combined_cycle+Coal+Consumption+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod6=lm(Electricity~Hydraulic+Cogeneration+Solar_Photovoltaic+Nuclear+Wind+
+          Gas_price, data=trainhour)
+#The add functions includes each predictor
+add1(mod6,scope=(~.+Solar_Thermal+
+                   Other_Renewables+
+                   Combined_cycle+Coal+Consumption+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod7=lm(Electricity~Hydraulic+Cogeneration+Solar_Photovoltaic+Nuclear+Wind+
+          Gas_price+Other_Renewables, data=trainhour)
+#The add functions includes each predictor
+add1(mod7,scope=(~.+Solar_Thermal+Combined_cycle+Coal+Consumption+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod8=lm(Electricity~Hydraulic+Cogeneration+Solar_Photovoltaic+Nuclear+Wind+
+          Gas_price+Other_Renewables+Coal, data=trainhour)
+#The add functions includes each predictor
+add1(mod8,scope=(~.+Solar_Thermal+Combined_cycle+Consumption+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod9=lm(Electricity~Hydraulic+Cogeneration+Solar_Photovoltaic+Nuclear+Wind+
+          Gas_price+Other_Renewables+Coal+Consumption, data=trainhour)
+#The add functions includes each predictor
+add1(mod9,scope=(~.+Solar_Thermal+Combined_cycle+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour)
+
+mod10=lm(Electricity~Hydraulic+Cogeneration+Solar_Photovoltaic+Nuclear+Wind+
+          Gas_price+Other_Renewables+Coal+Consumption+Balance_Portugal, data=trainhour)
+#The add functions includes each predictor
+add1(mod10,scope=(~.+Solar_Thermal+Combined_cycle+
+                   CO2_price+Balance_France),
+     test="F",data=trainhour)
+
+mod11=lm(Electricity~Hydraulic+Cogeneration+Solar_Photovoltaic+Nuclear+Wind+
+          Gas_price+Other_Renewables+Coal+Consumption+Balance_Portugal+
+           Balance_France, data=trainhour)
+#The add functions includes each predictor
+add1(mod11,scope=(~.+Solar_Thermal+Combined_cycle+
+                   CO2_price),
+     test="F",data=trainhour)
+
+mod12=lm(Electricity~Hydraulic+Cogeneration+Solar_Photovoltaic+Nuclear+Wind+
+          Gas_price+Other_Renewables+Coal+Consumption+Balance_Portugal+
+           Balance_France+Combined_cycle, data=trainhour)
+#The add functions includes each predictor
+add1(mod12,scope=(~.+Solar_Thermal+CO2_price),
+     test="F",data=trainhour)
+
+mod13=lm(Electricity~Hydraulic+Cogeneration+Solar_Photovoltaic+Nuclear+Wind+
+          Gas_price+Other_Renewables+Coal+Consumption+Balance_Portugal+
+           Balance_France+Combined_cycle+Solar_Thermal, data=trainhour)
+#The add functions includes each predictor
+add1(mod13,scope=(~.+CO2_price),
+     test="F",data=trainhour)
+
+#The summary of the final model
+summary(mod13)
+
+```
+
+### Ridge regression
+
+```{r}
+#Ridge regression for 2022
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=trainday)
+
+fit.ridge=glmnet(X,trainday$Electricity,alpha=0)
+#Plot estimated coefficients for different values of the ridge parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to find the optimal lambda
+cv.out = cv.glmnet(X, trainday$Electricity, alpha = 0, nfolds=10) #alpha=0 means Ridge Regression
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients with the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+
+#A way to plot the coefficients in a column plot
+modelo = glmnet(x = X,
+            y = trainday$Electricity,
+            alpha = 0,
+            lambda = cv.out$lambda.min
+          )
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+```{r}
+#Ridge regression for April 2022
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=trainhour)
+
+fit.ridge=glmnet(X,trainhour$Electricity,alpha=0)
+#Plot estimated coefficients for different values of the ridge parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to find the optimal lambda
+cv.out = cv.glmnet(X, trainhour$Electricity, alpha = 0, nfolds=10) #alpha=0 means Ridge Regression
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients with the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+
+#A way to plot the coefficients in a column plot
+modelo = glmnet(x = X,
+            y = trainhour$Electricity,
+            alpha = 0,
+            lambda = cv.out$lambda.min)
+
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+### LASSO
+
+```{r}
+#LASSO for 2022
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=trainday)
+
+fit.ridge=glmnet(X,trainday$Electricity,alpha=1)
+#Plot estimated coefficients for different values of the LASSO parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to find the optimal lambda
+cv.out = cv.glmnet(X, trainday$Electricity, alpha = 1, nfolds=10) #alpha=1 means LASSO
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients with the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+
+#A way to plot the coefficients in a column plot
+modelo = glmnet(x = X,
+            y = trainday$Electricity,
+            alpha = 1,
+            lambda = cv.out$lambda.min)
+
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+```{r}
+#LASSO for April 2022
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=trainhour)
+
+fit.ridge=glmnet(X,trainhour$Electricity,alpha=1)
+#Plot estimated coefficients for different values of the LASSO parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to find the optimal lambda
+cv.out = cv.glmnet(X, trainhour$Electricity, alpha = 1, nfolds=10) #alpha=1 means LASSO
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients with the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+
+#A way to plot the coefficients in a column plot
+modelo = glmnet(x = X,
+            y = trainhour$Electricity,
+            alpha = 1,
+            lambda = cv.out$lambda.min)
+
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+
+#### WE INTRODUCE DUMMY VARIABLES FOR MACHINE LEARNING METHODS
+```{r}
+#For 2022 we create the dummy variables for the day of the week
+library(lubridate)
+prueba=tfm_daily
+#Create a variable that says the day of the week
+prueba$Weekday = wday(prueba$Date, label = TRUE)
+#Create the dummy variables
+dummy_week = model.matrix(~ Weekday - 1, data = prueba)
+colnames(dummy_week)=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thusday", "Friday", "Saturday")
+#Joint the dataset and the dummy variables
+prueba = cbind(prueba, dummy_week)
+#Remove the Weekday and Date variables
+prueba=prueba[,-22]
+prueba=prueba[,-1]
+#Remove rows where there are lot of NAs in the price of gas variables
+prueba=prueba[-c(1:743),]
+#Rename the rows
+rownames(prueba)=c(1:2575)
+#Save the response variable and dummy variables
+y = prueba$Electricity
+week=prueba[,c(21:27)]
+#Remove the response variable and dummy variables to standardize the rest
+prueba=prueba[,-c(15,21:27)]
+#Standardization of predictor variables
+data_scaled = scale(prueba)
+#Combination of the response variable, the standardized predictor variables and the dummy variables
+data_scaled = cbind(y, data_scaled, week)
+
+day=as.data.frame(data_scaled)
+names(day)[1]="Electricity"
+```
+
+
+```{r}
+library(dplyr)
+library(mice)
+
+#Imputation for 2022
+imputacion = mice(day, m = 5, method = "pmm", seed = 123)
+day = mice::complete(imputacion)
+```
+
+
+
+```{r}
+#We choose rows of 2022 for train set
+in_train=c(2180:2544)
+
+trainday = day[in_train,]
+testday = day[-in_train,]
+```
+
+WE DO THE SAME WITH APRIL 2022 (HOUR DATASET)
+
+```{r}
+#For April 2022 (hour dataset) we introduce the day of the week and the hour dummy variables
+prueba=tfm_hour
+#New column that says the day of the week
+prueba$Weekday = wday(prueba$Date, label = TRUE)
+#Create the dummy variables
+dummy_week = model.matrix(~ Weekday - 1, data = prueba)
+colnames(dummy_week)=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thusday", "Friday", "Saturday")
+#Combine the dataset with the dummy variables
+prueba = cbind(prueba, dummy_week)
+
+#Modify the format of dates to extract the hour of each row
+prueba$Date = ymd_hms(prueba$Date)
+prueba$Date = as.POSIXct(prueba$Date, format = "%Y-%m-%d %H:%M:%S") + hours(1)
+#New column that says the hour of the day
+prueba$Hourday=hour(prueba$Date)
+prueba$Hourday=as.character(prueba$Hourday)
+#Create the dummy variables that says the hour of the day
+dummy_hour = model.matrix(~ Hourday - 1, data = prueba)
+colnames(dummy_hour)=c("H0", "H1", "H10", "H11",  "H12", "H13", "H14", "H15", "H16", "H17", "H18", "H19",
+                      "H2", "H20", "H21", "H22",  "H23", "H3", "H4", "H5", "H6", "H7", "H8", "H9")
+#Combine the dataset with these new dummy variables
+prueba = cbind(prueba, dummy_hour)
+
+#Remove the rows with lot of NAs in the price of gas variable
+prueba=prueba[-c(1:17832),]
+#Remove the Date variables
+prueba=prueba[,-1]
+#Rename the rows
+rownames(prueba)=c(1:61791)
+#Remove the Weekday and Hourday variable
+prueba=prueba[,-c(17,25)]
+#Save the response and dummy variables
+y = prueba$Electricity
+weekhour=prueba[,c(17:47)]
+#Remove the response and dummy variables to standardize the rest
+prueba=prueba[,-c(1,17:47)]
+
+#Standardization of predictor variables
+data_scaled = scale(prueba)
+
+#Combination of the response variable, the standardized predictor variables and the dummy variables
+data_scaled = cbind(y, data_scaled,weekhour)
+
+
+hour=as.data.frame(data_scaled)
+names(hour)[1]="Electricity"
+
+#Removw the Balance_Morocco variables
+hour=hour[,-16]
+
+```
+
+
+```{r}
+library(mice)
+
+#Imputation for April 2022
+imputacion = mice(hour, m = 5, method = "rf", seed = 123)
+hour = mice::complete(imputacion)
+
+
+```
+
+
+```{r}
+
+#We choose rows of April 2022
+in_train=c(54448:55167)
+trainhour = hour[ in_train,]
+testhour = hour[-in_train,]
+
+```
+
+
+### Random forest
+
+
+```{r}
+#In each machine learning method, 8 fold cross validation will be performed with the training base.
+ctrl = trainControl(method = "cv", number = 8 ,
+                     verboseIter=T)
+```
+
+
+````{r}
+# Obtain the best model for 2022 using random forest with ntree=200 and tuning for mtry
+rf.train = train(Electricity ~., 
+                  method = "rf", 
+                  data = trainday,
+                  preProcess = c("center", "scale"),
+                  ntree=200,
+                  tuneGrid = expand.grid(mtry=c(5:15)),
+                  trControl=ctrl)
+#To see the best model
+print(rf.train)
+
+#Plot variable importance
+rf_imp = varImp(rf.train, scale = F)
+plot(rf_imp, scales = list(y = list(cex = .85)))
+```
+
+````{r}
+# Obtain the best model for April 2022 using random forest with ntree=200 and tuning for mtry
+rf.train = train(Electricity ~., 
+                  method = "rf", 
+                  data = trainhour,
+                  preProcess = c("center", "scale"),
+                  ntree=200,
+                  tuneGrid = expand.grid(mtry=c(5:15)),
+                  trControl=ctrl)
+#To see the best model
+print(rf.train)
+
+#Plot variable importance
+rf_imp = varImp(rf.train, scale = F)
+plot(rf_imp, scales = list(y = list(cex = .57)))
+```
+
+
+
+### SVM
+
+```{r}
+# Obtain the best model for 2022 using SVM with tuning for C and sigma
+svmFit = train(Electricity ~., method = "svmRadial", 
+                data = trainday,
+                preProcess = c("center", "scale"),
+                tuneGrid = expand.grid(C = c(.25, .5, 1,10,50,100,250,500,1000),
+                                      sigma = c(0,0.0005,0.001,0.01,.05,0.1)),
+                trControl=ctrl)
+#To see the best model
+print(svmFit)
+
+#Variable importance
+svmimp = varImp(svmFit, scale = F)
+plot(svmimp, scales = list(y = list(cex = .85)))
+```
+
+
+```{r}
+# Obtain the best model for April 2022 using SVM with tuning for C and sigma
+svmFit = train(Electricity ~., method = "svmRadial", 
+                data = trainhour,
+                preProcess = c("center", "scale"),
+                tuneGrid = expand.grid(C = c(.25, .5, 1,10,50,100,250,500,1000),
+                                      sigma = c(0,0.0005,0.001,0.01,.05,0.1)),
+                trControl=ctrl)
+#To see the best model
+print(svmFit)
+
+#Plot variable importance
+svmimp = varImp(svmFit, scale = F)
+plot(svmimp, scales = list(y = list(cex = .57)))
+```
+
+### KNN
+
+```{r}
+# Obtain the best model for 2022 using KNN with tuning for k (number of neighbors)
+knnFit = train(Electricity ~ ., 
+                method = "knn", 
+                data = trainday,
+                preProcess = c("center", "scale"),
+                tuneLength = 20,
+                trControl = ctrl)
+#To see the best model
+print(knnFit)
+
+#Plot variable importance
+knnimp = varImp(knnFit, scale = F)
+plot(knnimp, scales = list(y = list(cex = .85)))
+```
+
+```{r}
+# Obtain the best model for April 2022 using KNN with tuning for k (number of neighbors)
+knnFit = train(Electricity ~ ., 
+                method = "knn", 
+                data = trainhour,
+                preProcess = c("center", "scale"),
+                tuneLength = 20,
+                trControl = ctrl)
+#To see the best model
+print(knnFit)
+
+#Plot variable importance
+knnimp = varImp(knnFit, scale = F)
+plot(knnimp, scales = list(y = list(cex = .57)))
+```
+
+
+### XGB
+```{r, include=FALSE}
+# Obtain the best model for 2022 using XGB with tuning for nrounds, eta, max_depth, gamma, colsample_bytree and min_child_weight
+xgb_grid = expand.grid(
+  nrounds = c(100,1000,2000),
+  eta = c(0.5,0.1,0.001),
+  max_depth = c(2,4,6),
+  gamma = c(0,10,100),
+  colsample_bytree = c(0.2,0.4,0.8),
+  min_child_weight = c(1,10,50),
+  subsample = 1)
+
+xgb.train = train(Electricity ~ .,  data=trainday,
+                  trControl = ctrl,
+                  maximize = F,
+                  tuneGrid = xgb_grid,
+                  preProcess = c("center", "scale"),
+                  method = "xgbTree",
+                  verbosity=0)
+```
+
+
+```{r}
+#To see the best model
+print(xgb.train)
+
+#Plot variable importance
+xgb_imp = varImp(xgb.train, scale = F)
+plot(xgb_imp, scales = list(y = list(cex = .95)))
+```
+
+```{r, include=FALSE}
+# Obtain the best model for April 2022 using XGB with tuning for nrounds, eta, max_depth, gamma, colsample_bytree and min_child_weight
+xgb_grid = expand.grid(
+  nrounds = c(100,1000,2000),
+  eta = c(0.5,0.1,0.001),
+  max_depth = c(2,4,6),
+  gamma = c(0,10,100),
+  colsample_bytree = c(0.2,0.4,0.8),
+  min_child_weight = c(1,10,50),
+  subsample = 1)
+
+xgb.train = train(Electricity ~ .,  data=trainhour,
+                  trControl = ctrl,
+                  maximize = F,
+                  tuneGrid = xgb_grid,
+                  preProcess = c("center", "scale"),
+                  method = "xgbTree",
+                  verbosity=0)
+```
+
+
+```{r}
+#To see the best model
+print(xgb.train)
+
+#Plot variable importance
+xgb_imp = varImp(xgb.train, scale = F)
+plot(xgb_imp, scales = list(y = list(cex = .95)))
+```
+
+## MONTHLY DATASET MODELS
+
+```{r}
+prueba=tfm_monthly
+#Remove the Date variable
+prueba=prueba[,-1]
+
+#Save and remove the response variable to standardize the rest
+y = prueba$Electricity
+prueba=prueba[,-11]
+
+#Standardization of predictor variables
+data_scaled = scale(prueba)
+
+#Combination of the response variable and standardized predictor variables
+data_scaled = cbind(y, data_scaled)
+
+month=as.data.frame(data_scaled)
+names(month)[1]="Electricity"
+
+```
+
+
+
+```{r}
+library(dplyr)
+library(mice)
+
+#Imputation for monthly dataset
+imputacion = mice(month, m = 5, method = "pmm", seed = 123)
+month = mice::complete(imputacion)
+```
+
+
+
+```{r}
+#Model with all the predictors
+model=lm(Electricity~.,data = month)
+summary(model)
+```
+
+
+### AIC
+```{r}
+#Search for the model with the best AIC value
+model = lm(Electricity ~., data = month)
+library(MASS)
+best_model = stepAIC(model, direction="both", trace=FALSE)
+#Summary of that model
+summary(best_model)
+
+```
+
+
+
+### BIC
+
+
+```{r}
+#Search for the model with the best BIC value
+model = lm(Electricity ~., data = month)
+library(MASS)
+best_model = stepAIC(model,k=log(nrow(month)), direction="both", trace=FALSE)
+#Smmary of that model
+summary(best_model)
+
+```
+
+
+### BACKWARDS SELECTION
+
+```{r}
+#Backwards selection for monthly dataset
+modall = lm(Electricity ~., data = month)
+summary(modall)$coefficients
+drop1(modall,test="F")
+
+mod1=update(modall,.~.-Consumption)
+drop1(mod1,test="F")
+
+mod2=update(mod1,.~.-Other_Renewables)
+drop1(mod2,test="F")
+
+mod3=update(mod2,.~.-Balance_Portugal)
+drop1(mod3,test="F")
+
+mod4=update(mod3,.~.-Solar_Thermal)
+drop1(mod4,test="F")
+
+mod5=update(mod4,.~.-Wind)
+drop1(mod5,test="F")
+
+mod6=update(mod5,.~.-Balance_France)
+drop1(mod6,test="F")
+
+mod7=update(mod6,.~.-Coal)
+drop1(mod7,test="F")
+
+#The final model and its summary
+modfin=lm(Electricity ~ Hydraulic + Pumping_Turbine + Nuclear + Combined_cycle + 
+    Solar_Photovoltaic + Cogeneration + Gas_Price + CO2_Price + 
+    Balance_Morocco, data=month)
+summary(modfin)
+
+```
+
+### FORWARD SELECTION
+
+```{r}
+#Forward selection for monthly dataset
+mod0=lm(Electricity~1, data=month)
+#The add functions includes each predictor
+add1(mod0,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Combined_cycle+Coal+
+                   Cogeneration+Consumption+Gas_Price+
+                   CO2_Price+Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=month)
+
+mod1=lm(Electricity~Gas_Price, data=month)
+#The add functions includes each predictor
+add1(mod1,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Combined_cycle+Coal+
+                   Cogeneration+Consumption+
+                   CO2_Price+Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=month)
+
+mod2=lm(Electricity~Gas_Price+Cogeneration, data=month)
+#The add functions includes each predictor
+add1(mod2,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Combined_cycle+Coal+Consumption+
+                   CO2_Price+Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=month)
+
+mod3=lm(Electricity~Gas_Price+Cogeneration+CO2_Price, data=month)
+#The add functions includes each predictor
+add1(mod3,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Combined_cycle+Coal+Consumption+
+                   Balance_France+Balance_Portugal+Balance_Morocco),
+     test="F",data=month)
+
+mod4=lm(Electricity~Gas_Price+Cogeneration+CO2_Price+Balance_Morocco, data=month)
+#The add functions includes each predictor
+add1(mod4,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Nuclear+Combined_cycle+Coal+Consumption+
+                   Balance_France+Balance_Portugal),
+     test="F",data=month)
+
+mod5=lm(Electricity~Gas_Price+Cogeneration+CO2_Price+Balance_Morocco+
+          Nuclear, data=month)
+#The add functions includes each predictor
+add1(mod5,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Pumping_Turbine+
+                   Combined_cycle+Coal+Consumption+
+                   Balance_France+Balance_Portugal),
+     test="F",data=month)
+
+mod6=lm(Electricity~Gas_Price+Cogeneration+CO2_Price+Balance_Morocco+
+          Nuclear+Pumping_Turbine, data=month)
+#The add functions includes each predictor
+add1(mod6,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Solar_Thermal+Other_Renewables+
+                   Combined_cycle+Coal+Consumption+Balance_France+Balance_Portugal),
+     test="F",data=month)
+
+mod7=lm(Electricity~Gas_Price+Cogeneration+CO2_Price+Balance_Morocco+
+          Nuclear+Pumping_Turbine+Combined_cycle, data=month)
+#The add functions includes each predictor
+add1(mod7,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Solar_Thermal+Other_Renewables+
+                   Coal+Consumption+Balance_France+Balance_Portugal),
+     test="F",data=month)
+
+mod8=lm(Electricity~Gas_Price+Cogeneration+CO2_Price+Balance_Morocco+
+          Nuclear+Pumping_Turbine+Combined_cycle+Solar_Thermal, data=month)
+#The add functions includes each predictor
+add1(mod8,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Other_Renewables+
+                   Coal+Consumption+Balance_France+Balance_Portugal),
+     test="F",data=month)
+
+mod9=lm(Electricity~Gas_Price+Cogeneration+CO2_Price+Balance_Morocco+
+          Nuclear+Pumping_Turbine+Combined_cycle+Solar_Thermal+
+          Hydraulic, data=month)
+#The add functions includes each predictor
+add1(mod9,scope=(~.+Wind+Solar_Photovoltaic+Other_Renewables+
+                   Coal+Consumption+Balance_France+Balance_Portugal),
+     test="F",data=month)
+
+#Summary of the final model
+summary(mod9)
+
+```
+
+### Ridge regression
+
+```{r}
+#Ridge regression for the monthly dataset
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=month)
+fit.ridge=glmnet(X,month$Electricity,alpha=0)
+#Plot estimated coefficients for different values of the ridge parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to find the optimal lambda
+cv.out = cv.glmnet(X, month$Electricity, alpha = 0, nfolds=10) #alpha=0 means Ridge Regression
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients using the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+
+#A way to plot the coefficients
+modelo = glmnet(x = X,
+            y = month$Electricity,
+            alpha = 0,
+            lambda = cv.out$lambda.min)
+
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+
+### LASSO
+
+```{r}
+#LASSO for the monthly dataset
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=month)
+
+fit.ridge=glmnet(X,month$Electricity,alpha=1)
+#Plot estimated coefficients for different values of the LASSO parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to find the optimal value of lambda
+cv.out = cv.glmnet(X, month$Electricity, alpha = 1, nfolds=10) #alpha=1 means LASSO
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients using the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+
+#A way to plot the coefficients
+modelo = glmnet(x = X,
+            y = month$Electricity,
+            alpha = 1,
+            lambda = cv.out$lambda.min)
+
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") + 
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+### Random forest
+
+
+```{r}
+#In each machine learning method, 8 fold cross validation will be performed with the training base.
+ctrl = trainControl(method = "cv", number = 8 ,
+                     verboseIter=T)
+```
+
+
+````{r}
+# Obtain the best model for monthly dataset using random forest with ntree=200 and tuning for mtry
+rf.train = train(Electricity ~., 
+                  method = "rf", 
+                  data = month,
+                  preProcess = c("center", "scale"),
+                  ntree=200,
+                  tuneGrid = expand.grid(mtry=c(5:15)),
+                  trControl=ctrl)
+#To see the best model
+print(rf.train)
+
+#Plot variable importance
+rf_imp = varImp(rf.train, scale = F)
+plot(rf_imp, scales = list(y = list(cex = .85)))
+```
+
+
+
+### SVM
+
+```{r}
+# Obtain the best model for monthly dataset using SVM with tuning for C and sigma
+svmFit = train(Electricity ~., method = "svmRadial", 
+                data = month,
+                preProcess = c("center", "scale"),
+                tuneGrid = expand.grid(C = c(.25, .5, 1,10,50,100,250,500,1000),
+                                      sigma = c(0,0.0005,0.001,0.01,.05,0.1)),
+                trControl=ctrl)
+#To see the best model
+print(svmFit)
+
+#Plot variable importance
+svmimp = varImp(svmFit, scale = F)
+plot(svmimp, scales = list(y = list(cex = .85)))
+```
+
+
+
+### KNN
+
+```{r}
+# Obtain the best model for monthly dataset using KNN with tuning for k (number of neighbors)
+knnFit = train(Electricity ~ ., 
+                method = "knn", 
+                data = month,
+                preProcess = c("center", "scale"),
+                tuneLength = 20,
+                trControl = ctrl)
+#To see the best model
+print(knnFit)
+
+#Plot variable importance
+knnimp = varImp(knnFit, scale = F)
+plot(knnimp, scales = list(y = list(cex = .85)))
+```
+
+### XGB
+```{r,include=FALSE}
+# Obtain the best model for monthly dataset using XGB with tuning for nrounds, eta, max_depth, gamma, colsample_bytree and min_child_weight
+xgb_grid = expand.grid(
+  nrounds = c(100,1000,2000),
+  eta = c(0.5,0.1,0.001),
+  max_depth = c(2,4,6),
+  gamma = c(0,10,100),
+  colsample_bytree = c(0.2,0.4,0.8),
+  min_child_weight = c(1,10,50),
+  subsample = 1)
+
+xgb.train = train(Electricity ~ .,  data=month,
+                  trControl = ctrl,
+                  maximize = F,
+                  tuneGrid = xgb_grid,
+                  preProcess = c("center", "scale"),
+                  method = "xgbTree",
+                  verbosity=0)
+```
+
+
+```{r}
+#To see the results
+print(xgb.train)
+
+#Plot variable importance
+xgb_imp = varImp(xgb.train, scale = F)
+plot(xgb_imp, scales = list(y = list(cex = .95)))
+```
+
+## NOVEMBER 2016 VS NOVEMBER 2022
+
+
+```{r}
+prueba=tfm_hour
+#Remove rows with NAs in the price of gas variable
+prueba=prueba[-c(1:17832),]
+#Remove the Date variable
+prueba=prueba[,-1]
+#Rename the rows
+rownames(prueba)=c(1:61791)
+
+#Save and remove the response variable to standardize the rest
+y = prueba$Electricity
+prueba=prueba[,-1]
+
+#Standardization of predictor variables
+data_scaled = scale(prueba)
+
+#Combination of the response variable and standardized predictor variables
+data_scaled = cbind(y, data_scaled)
+
+hour=as.data.frame(data_scaled)
+names(hour)[1]="Electricity"
+
+#Remove the Balance_Morocco variable
+hour=hour[,-16]
+```
+
+
+
+```{r}
+library(mice)
+
+#Imputation for the hour dataset
+imputacion = mice(hour, m = 5, method = "pmm", seed = 123)
+hour = mice::complete(imputacion)
+```
+
+
+```{r}
+#We choose rows of November 2016 for the train set
+in_train=c(7006:7725)
+trainhour1 = hour[in_train,]
+testhour1 = hour[-in_train,]
+
+#We choose rows of November 2022 for the train set
+in_train=c(59584:60303)
+trainhour2 = hour[ in_train,]
+testhour2 = hour[-in_train,]
+
+```
+
+
+
+```{r}
+#Model with all the predictors for November 2016
+model=lm(Electricity~.,data = trainhour1)
+summary(model)
+```
+
+```{r}
+#Model with all the predictors for November 2022
+model=lm(Electricity~.,data = trainhour2)
+summary(model)
+```
+
+### AIC
+
+```{r}
+#Search for AIC's best value model for November 2016
+model = lm(Electricity ~., data = trainhour1)
+library(MASS)
+best_model = stepAIC(model, direction="both", trace=FALSE)
+
+#Summary of that model
+summary(best_model)
+
+```
+
+```{r}
+#Search for AIC's best value model for November 2022
+model = lm(Electricity ~., data = trainhour2)
+library(MASS)
+best_model = stepAIC(model, direction="both", trace=FALSE)
+
+#Summary of that model
+summary(best_model)
+
+```
+
+### BIC
+
+
+```{r}
+#Search for BIC's best value model for November 2016
+model = lm(Electricity ~., data = trainhour1)
+library(MASS)
+best_model = stepAIC(model,k=log(nrow(trainhour1)), direction="both", trace=FALSE)
+
+#Summary of that model
+summary(best_model)
+
+```
+
+```{r}
+#Search for BIC's best value model for November 2022
+model = lm(Electricity ~., data = trainhour2)
+library(MASS)
+best_model = stepAIC(model,k=log(nrow(trainhour2)), direction="both", trace=FALSE)
+
+#Summary of that model
+summary(best_model)
+
+```
+
+### BACKWARDS SELECTION
+
+```{r}
+#Backwards selection for November 2016
+modall = lm(Electricity ~., data = trainhour1)
+summary(modall)$coefficients
+drop1(modall,test="F")
+
+mod1=update(modall,.~.-Cogeneration)
+drop1(mod1,test="F")
+
+mod2=update(mod1,.~.-Gas_price)
+drop1(mod2,test="F")
+
+mod3=update(mod2,.~.-Other_Renewables)
+drop1(mod3,test="F")
+
+mod4=update(mod3,.~.-Solar_Thermal)
+drop1(mod4,test="F")
+
+mod5=update(mod4,.~.-Hydraulic)
+drop1(mod5,test="F")
+
+#The final model and its summary
+modfin=lm(Electricity ~ Consumption + Wind + Solar_Photovoltaic + Nuclear + 
+    Combined_cycle + Coal + CO2_price + Balance_France + Balance_Portugal, data=trainhour1)
+summary(modfin)
+
+```
+
+
+```{r}
+#Backwards selection for November 2022
+modall = lm(Electricity ~., data = trainhour2)
+summary(modall)$coefficients
+drop1(modall,test="F")
+
+mod1=update(modall,.~.-Coal)
+drop1(mod1,test="F")
+
+#The final model and its summary
+modfin=lm(Electricity ~ Consumption + Wind + Solar_Photovoltaic + Solar_Thermal + 
+    Other_Renewables + Hydraulic + Nuclear + Combined_cycle + 
+    Cogeneration + Gas_price + CO2_price + Balance_France + Balance_Portugal, data=trainhour2)
+summary(modfin)
+```
+
+### FORWARD SELECTION
+
+```{r}
+#Forward selection for November 2016
+mod0=lm(Electricity~1, data=trainhour1)
+#The add functions includes each predictor
+add1(mod0,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Nuclear+Combined_cycle+Coal+
+                   Cogeneration+Consumption+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour1)
+
+mod1=lm(Electricity~Consumption, data=trainhour1)
+#The add functions includes each predictor
+add1(mod1,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Nuclear+Combined_cycle+Coal+
+                   Cogeneration+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour1)
+
+mod2=lm(Electricity~Consumption+Cogeneration, data=trainhour1)
+#The add functions includes each predictor
+add1(mod2,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Nuclear+Combined_cycle+Coal+
+                   Gas_price+CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour1)
+
+mod3=lm(Electricity~Consumption+Cogeneration+Wind, data=trainhour1)
+#The add functions includes each predictor
+add1(mod3,scope=(~.+Hydraulic+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Nuclear+Combined_cycle+Coal+
+                   Gas_price+CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour1)
+
+mod4=lm(Electricity~Consumption+Cogeneration+Wind+CO2_price, data=trainhour1)
+#The add functions includes each predictor
+add1(mod4,scope=(~.+Hydraulic+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Nuclear+Combined_cycle+Coal+
+                   Gas_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour1)
+
+mod5=lm(Electricity~Consumption+Cogeneration+Wind+CO2_price+
+          Hydraulic, data=trainhour1)
+#The add functions includes each predictor
+add1(mod5,scope=(~.+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Nuclear+Combined_cycle+Coal+
+                   Gas_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour1)
+
+mod6=lm(Electricity~Consumption+Cogeneration+Wind+CO2_price+
+          Hydraulic+Balance_France, data=trainhour1)
+#The add functions includes each predictor
+add1(mod6,scope=(~.+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+Nuclear+Combined_cycle+Coal+
+                   Gas_price+Balance_Portugal),
+     test="F",data=trainhour1)
+
+mod7=lm(Electricity~Consumption+Cogeneration+Wind+CO2_price+
+          Hydraulic+Balance_France+Solar_Photovoltaic, data=trainhour1)
+#The add functions includes each predictor
+add1(mod7,scope=(~.+Solar_Thermal+
+                   Other_Renewables+Nuclear+Combined_cycle+Coal+
+                   Gas_price+Balance_Portugal),
+     test="F",data=trainhour1)
+
+mod8=lm(Electricity~Consumption+Cogeneration+Wind+CO2_price+
+          Hydraulic+Balance_France+Solar_Photovoltaic+Combined_cycle, data=trainhour1)
+#The add functions includes each predictor
+add1(mod8,scope=(~.+Solar_Thermal+
+                   Other_Renewables+Nuclear+Coal+
+                   Gas_price+Balance_Portugal),
+     test="F",data=trainhour1)
+
+mod9=lm(Electricity~Consumption+Cogeneration+Wind+CO2_price+
+          Hydraulic+Balance_France+Solar_Photovoltaic+Combined_cycle+
+          Nuclear, data=trainhour1)
+#The add functions includes each predictor
+add1(mod9,scope=(~.+Solar_Thermal+
+                   Other_Renewables+Coal+
+                   Gas_price+Balance_Portugal),
+     test="F",data=trainhour1)
+
+mod10=lm(Electricity~Consumption+Cogeneration+Wind+CO2_price+
+          Hydraulic+Balance_France+Solar_Photovoltaic+Combined_cycle+
+          Nuclear+Balance_Portugal, data=trainhour1)
+#The add functions includes each predictor
+add1(mod10,scope=(~.+Solar_Thermal+Other_Renewables+Coal+Gas_price),
+     test="F",data=trainhour1)
+
+mod11=lm(Electricity~Consumption+Cogeneration+Wind+CO2_price+
+          Hydraulic+Balance_France+Solar_Photovoltaic+Combined_cycle+
+          Nuclear+Balance_Portugal+Coal, data=trainhour1)
+#The add functions includes each predictor
+add1(mod11,scope=(~.+Solar_Thermal+Other_Renewables+Gas_price),
+     test="F",data=trainhour1)
+
+#Summary of the final model
+summary(mod11)
+
+```
+
+```{r}
+#Forward selection for November 2022
+mod0=lm(Electricity~1, data=trainhour2)
+#The add functions includes each predictor
+add1(mod0,scope=(~.+Hydraulic+Wind+Solar_Photovoltaic+Solar_Thermal+Other_Renewables+
+                   Nuclear+Combined_cycle+Coal+Cogeneration+Consumption+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour2)
+
+mod1=lm(Electricity~Hydraulic, data=trainhour2)
+#The add functions includes each predictor
+add1(mod1,scope=(~.+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+
+                   Nuclear+Combined_cycle+Coal+Cogeneration+Consumption+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour2)
+
+mod2=lm(Electricity~Hydraulic+Combined_cycle, data=trainhour2)
+#The add functions includes each predictor
+add1(mod2,scope=(~.+Wind+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+
+                   Nuclear+Coal+Cogeneration+Consumption+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour2)
+
+mod3=lm(Electricity~Hydraulic+Combined_cycle+Wind, data=trainhour2)
+#The add functions includes each predictor
+add1(mod3,scope=(~.+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+
+                   Nuclear+Coal+Cogeneration+Consumption+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour2)
+
+mod4=lm(Electricity~Hydraulic+Combined_cycle+Wind+Cogeneration, data=trainhour2)
+#The add functions includes each predictor
+add1(mod4,scope=(~.+Solar_Photovoltaic+Solar_Thermal+
+                   Other_Renewables+
+                   Nuclear+Coal+Consumption+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour2)
+
+mod5=lm(Electricity~Hydraulic+Combined_cycle+Wind+Cogeneration+
+          Other_Renewables, data=trainhour2)
+#The add functions includes each predictor
+add1(mod5,scope=(~.+Solar_Photovoltaic+Solar_Thermal+
+                   Nuclear+Coal+Consumption+Gas_price+
+                   CO2_price+Balance_France+Balance_Portugal),
+     test="F",data=trainhour2)
+
+mod6=lm(Electricity~Hydraulic+Combined_cycle+Wind+Cogeneration+
+          Other_Renewables+Balance_Portugal, data=trainhour2)
+#The add functions includes each predictor
+add1(mod6,scope=(~.+Solar_Photovoltaic+Solar_Thermal+
+                   Nuclear+Coal+Consumption+Gas_price+
+                   CO2_price+Balance_France),
+     test="F",data=trainhour2)
+
+mod7=lm(Electricity~Hydraulic+Combined_cycle+Wind+Cogeneration+
+          Other_Renewables+Balance_Portugal+CO2_price, data=trainhour2)
+#The add functions includes each predictor
+add1(mod7,scope=(~.+Solar_Photovoltaic+Solar_Thermal+
+                   Nuclear+Coal+Consumption+Gas_price+Balance_France),
+     test="F",data=trainhour2)
+
+mod8=lm(Electricity~Hydraulic+Combined_cycle+Wind+Cogeneration+
+          Other_Renewables+Balance_Portugal+CO2_price+Nuclear, data=trainhour2)
+#The add functions includes each predictor
+add1(mod8,scope=(~.+Solar_Photovoltaic+Solar_Thermal+
+                   Coal+Consumption+Gas_price+Balance_France),
+     test="F",data=trainhour2)
+
+mod9=lm(Electricity~Hydraulic+Combined_cycle+Wind+Cogeneration+
+          Other_Renewables+Balance_Portugal+CO2_price+Nuclear+
+          Solar_Photovoltaic, data=trainhour2)
+#The add functions includes each predictor
+add1(mod9,scope=(~.+Solar_Thermal+
+                   Coal+Consumption+Gas_price+Balance_France),
+     test="F",data=trainhour2)
+
+mod10=lm(Electricity~Hydraulic+Combined_cycle+Wind+Cogeneration+
+          Other_Renewables+Balance_Portugal+CO2_price+Nuclear+
+          Solar_Photovoltaic+Consumption, data=trainhour2)
+#The add functions includes each predictor
+add1(mod10,scope=(~.+Solar_Thermal+
+                   Coal+Gas_price+Balance_France),
+     test="F",data=trainhour2)
+
+mod11=lm(Electricity~Hydraulic+Combined_cycle+Wind+Cogeneration+
+          Other_Renewables+Balance_Portugal+CO2_price+Nuclear+
+          Solar_Photovoltaic+Consumption+Balance_France, data=trainhour2)
+#The add functions includes each predictor
+add1(mod11,scope=(~.+Solar_Thermal+Coal+Gas_price),
+     test="F",data=trainhour2)
+
+mod12=lm(Electricity~Hydraulic+Combined_cycle+Wind+Cogeneration+
+          Other_Renewables+Balance_Portugal+CO2_price+Nuclear+
+          Solar_Photovoltaic+Consumption+Balance_France+Solar_Thermal, data=trainhour2)
+#The add functions includes each predictor
+add1(mod12,scope=(~.+Coal+Gas_price),
+     test="F",data=trainhour2)
+
+#Summary of the final model
+summary(mod12)
+
+```
+
+### Ridge regression
+
+```{r}
+#Ridge regression for November 2016
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=trainhour1)
+
+fit.ridge=glmnet(X,trainhour1$Electricity,alpha=0)
+#Plot estimated coefficients for different values of the ridge parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to find the optimal lambda
+cv.out = cv.glmnet(X, trainhour1$Electricity, alpha = 0, nfolds=10) #alpha=0 means Ridge Regression
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients using the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+
+#A way to plot the coefficients
+modelo = glmnet(x = X,
+            y = trainhour1$Electricity,
+            alpha = 0,
+            lambda = cv.out$lambda.min)
+
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+```{r}
+#Ridge regression for November 2022
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=trainhour2)
+
+fit.ridge=glmnet(X,trainhour2$Electricity,alpha=0)
+#Plot estimated coefficients for different values of the ridge parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to find the value of the optimal lambda
+cv.out = cv.glmnet(X, trainhour2$Electricity, alpha = 0, nfolds=10) #alpha=0 means Ridge Regression
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients using the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+
+#A way to plot the coefficients using column graphic
+modelo = glmnet(x = X,
+            y = trainhour2$Electricity,
+            alpha = 0,
+            lambda = cv.out$lambda.min)
+
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+### LASSO
+
+```{r}
+#LASSO for November 2016
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=trainhour1)
+
+fit.ridge=glmnet(X,trainhour1$Electricity,alpha=1)
+#Plot estimated coefficients for different values of the LASSO parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to find the optimal lambda
+cv.out = cv.glmnet(X, trainhour1$Electricity, alpha = 1, nfolds=10) #alpha=1 means LASSO
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients using the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+
+#A way to plot the coefficients using a column plot
+modelo = glmnet(x = X,
+            y = trainhour1$Electricity,
+            alpha = 1,
+            lambda = cv.out$lambda.min)
+
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+```{r}
+#LASSO for November 2022
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=trainhour2)
+
+fit.ridge=glmnet(X,trainhour2$Electricity,alpha=1)
+#Plot estimated coefficients for different values of the LASSO parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to obtain the optimal lambda
+cv.out = cv.glmnet(X, trainhour2$Electricity, alpha = 1, nfolds=10) #alpha=1 means LASSO
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients using the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+
+#A way to plot the coefficients using a column plot
+modelo = glmnet(x = X,
+            y = trainhour2$Electricity,
+            alpha = 1,
+            lambda = cv.out$lambda.min)
+
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+
+#### WE INTRODUCE THE DUMMY VARIABLES FOR MACHINE LEARNING METHODS
+
+```{r}
+prueba=tfm_hour
+#New column showing the day of the week
+prueba$Weekday = wday(prueba$Date, label = TRUE)
+#Create the dummy variables fot the day of the week
+dummy_week = model.matrix(~ Weekday - 1, data = prueba)
+colnames(dummy_week)=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thusday", "Friday", "Saturday")
+#Combine the dataset with the dummy variables
+prueba = cbind(prueba, dummy_week)
+
+#Modify the Date format to obtain the hour of each date
+prueba$Date = ymd_hms(prueba$Date)
+prueba$Date = as.POSIXct(prueba$Date, format = "%Y-%m-%d %H:%M:%S") + hours(1)
+#New column showing the hour of the day
+prueba$Hourday=hour(prueba$Date)
+prueba$Hourday=as.character(prueba$Hourday)
+#Create the dummy variable for the hour of the day
+dummy_hour = model.matrix(~ Hourday - 1, data = prueba)
+colnames(dummy_hour)=c("H0", "H1", "H10", "H11",  "H12", "H13", "H14", "H15", "H16", "H17", "H18", "H19",
+                      "H2", "H20", "H21", "H22",  "H23", "H3", "H4", "H5", "H6", "H7", "H8", "H9")
+#Combine the dataset with dummy variables
+prueba = cbind(prueba, dummy_hour)
+
+#Remove the rows where there are NAs in the price of gas variable
+prueba=prueba[-c(1:17832),]
+#Remove the Date variable
+prueba=prueba[,-1]
+#Rename the rows
+rownames(prueba)=c(1:61791)
+#Eliminate the Weekday and Hourday variables created before for the dummies
+prueba=prueba[,-c(17,25)]
+#Save and remove the response and dummy variables to standardize the rest
+y = prueba$Electricity
+weekhour=prueba[,c(17:47)]
+prueba=prueba[,-c(1,17:47)]
+
+#Standardization of predictor variables
+data_scaled = scale(prueba)
+
+#Combination of the response variable and standardized predictor variables
+data_scaled = cbind(y, data_scaled,weekhour)
+
+
+hour=as.data.frame(data_scaled)
+names(hour)[1]="Electricity"
+
+#Remove the Balance_Morocco variable
+hour=hour[,-16]
+
+```
+
+
+```{r}
+library(mice)
+
+#Imputation for the hour dataset
+imputacion = mice(hour, m = 5, method = "rf", seed = 123)
+hour = mice::complete(imputacion)
+```
+
+
+```{r}
+#We choose rows of November 2016 for train set
+in_train=c(7006:7725)
+trainhour1 = hour[in_train,]
+testhour1 = hour[-in_train,]
+
+#We choose rows of November 2022 for train set
+in_train=c(59584:60303)
+trainhour2 = hour[ in_train,]
+testhour2 = hour[-in_train,]
+
+```
+
+
+
+### Random forest
+
+```{r}
+#In each machine learning method, 8 fold cross validation will be performed with the training base.
+ctrl = trainControl(method = "cv", number = 8 ,
+                     verboseIter=T)
+```
+
+
+````{r}
+# Obtain the best model for November 2016 using random forest with ntree=200 and tuning for mtry
+rf.train = train(Electricity ~., 
+                  method = "rf", 
+                  data = trainhour1,
+                  preProcess = c("center", "scale"),
+                  ntree=200,
+                  tuneGrid = expand.grid(mtry=c(5:15)),
+                  trControl=ctrl)
+#To see the best model
+print(rf.train)
+
+#Plot the variable importance
+rf_imp = varImp(rf.train, scale = F)
+plot(rf_imp, scales = list(y = list(cex = .57)))
+```
+
+````{r}
+# Obtain the best model for November 2022 using random forest with ntree=200 and tuning for mtry
+rf.train = train(Electricity ~., 
+                  method = "rf", 
+                  data = trainhour2,
+                  preProcess = c("center", "scale"),
+                  ntree=200,
+                  tuneGrid = expand.grid(mtry=c(5:15)),
+                  trControl=ctrl)
+#To see the best model
+print(rf.train)
+
+#Plot variable importance
+rf_imp = varImp(rf.train, scale = F)
+plot(rf_imp, scales = list(y = list(cex = .57)))
+```
+
+### SVM
+
+```{r}
+# Obtain the best model for November 2016 using SVM with tuning for C and sigma
+svmFit = train(Electricity ~., method = "svmRadial", 
+                data = trainhour1,
+                preProcess = c("center", "scale"),
+                tuneGrid = expand.grid(C = c(.25, .5, 1,10,50,100,250,500,1000),
+                                      sigma = c(0,0.0005,0.001,0.01,.05,0.1)),
+                trControl=ctrl)
+#To see the best model
+print(svmFit)
+
+#Plot variable importance
+svmimp = varImp(svmFit, scale = F)
+plot(svmimp, scales = list(y = list(cex = .57)))
+```
+
+
+```{r}
+# Obtain the best model for November 2022 using SVM with tuning for C and sigma
+svmFit = train(Electricity ~., method = "svmRadial", 
+                data = trainhour2,
+                preProcess = c("center", "scale"),
+                tuneGrid = expand.grid(C = c(.25, .5, 1,10,50,100,250,500,1000),
+                                      sigma = c(0,0.0005,0.001,0.01,.05,0.1)),
+                trControl=ctrl)
+#To see the best model
+print(svmFit)
+
+#Plot variable importance
+svmimp = varImp(svmFit, scale = F)
+plot(svmimp, scales = list(y = list(cex = .57)))
+```
+
+### KNN
+
+```{r}
+# Obtain the best model for November 2016 using KNN with tuning for k (number of neighbors)
+knnFit = train(Electricity ~ ., 
+                method = "knn", 
+                data = trainhour1,
+                preProcess = c("center", "scale"),
+                tuneLength = 20,
+                trControl = ctrl)
+#To see the best model
+print(knnFit)
+
+#Plot variable importance
+knnimp = varImp(knnFit, scale = F)
+plot(knnimp, scales = list(y = list(cex = .57)))
+```
+
+```{r}
+# Obtain the best model for November 2022 using KNN with tuning for k (number of neighbors)
+knnFit = train(Electricity ~ ., 
+                method = "knn", 
+                data = trainhour2,
+                preProcess = c("center", "scale"),
+                tuneLength = 20,
+                trControl = ctrl)
+#To see the best model
+print(knnFit)
+
+#Plot variable importance
+knnimp = varImp(knnFit, scale = F)
+plot(knnimp, scales = list(y = list(cex = .57)))
+```
+
+
+### XGB
+
+```{r, include=FALSE}
+# Obtain the best model for November 2016 using XGB with tuning for nrounds, eta, max_depth, gamma, colsample_bytree and min_child_weight
+xgb_grid = expand.grid(
+  nrounds = c(100,1000,2000),
+  eta = c(0.5,0.1,0.001),
+  max_depth = c(2,4,6),
+  gamma = c(0,10,100),
+  colsample_bytree = c(0.2,0.4,0.8),
+  min_child_weight = c(1,10,50),
+  subsample = 1)
+
+xgb.train = train(Electricity ~ .,  data=trainhour1,
+                  trControl = ctrl,
+                  maximize = F,
+                  tuneGrid = xgb_grid,
+                  preProcess = c("center", "scale"),
+                  method = "xgbTree",
+                  verbosity=0)
+```
+
+
+```{r}
+#To see the best model
+print(xgb.train)
+
+#Plot variable importance
+xgb_imp = varImp(xgb.train, scale = F)
+plot(xgb_imp, scales = list(y = list(cex = .57)))
+```
+
+```{r, include=FALSE}
+# Obtain the best model for November 2022 using XGB with tuning for nrounds, eta, max_depth, gamma, colsample_bytree and min_child_weight
+xgb_grid = expand.grid(
+  nrounds = c(100,1000,2000),
+  eta = c(0.5,0.1,0.001),
+  max_depth = c(2,4,6),
+  gamma = c(0,10,100),
+  colsample_bytree = c(0.2,0.4,0.8),
+  min_child_weight = c(1,10,50),
+  subsample = 1)
+
+xgb.train = train(Electricity ~ .,  data=trainhour2,
+                  trControl = ctrl,
+                  maximize = F,
+                  tuneGrid = xgb_grid,
+                  preProcess = c("center", "scale"),
+                  method = "xgbTree",
+                  verbosity=0)
+```
+
+
+```{r}
+#To see the best model
+print(xgb.train)
+
+#Plot variable importance
+xgb_imp = varImp(xgb.train, scale = F)
+plot(xgb_imp, scales = list(y = list(cex = .57)))
+```
+
+
+# ENTIRE DATASETS FOR COMPARISONS BETWEEN DIFFERENT
+
+## ALL HOUR DATASET
+
+```{r prephour}
+prueba=tfm_hour
+#We eliminate rows with lot of NAs in the price of gas variable
+prueba=prueba[-c(1:17832),]
+#We remove the Date variable
+prueba=prueba[,-1]
+#Rename the rows
+rownames(prueba)=c(1:61791)
+#We save and eliminate the response variable to standardize the rest
+y = prueba$Electricity
+prueba=prueba[,-1]
+
+# Standarization of the predictors
+data_scaled = scale(prueba)
+
+# Combination of the response variable and the standardized predictors
+data_scaled = cbind(y, data_scaled)
+
+
+hour=as.data.frame(data_scaled)
+names(hour)[1]="Electricity"
+
+#We remove the Balance_Morocco variable
+hour=hour[,-16]
+```
+
+
+
+```{r imphour}
+library(mice)
+#Imputation of the missing values
+imputacion = mice(hour, m = 5, method = "pmm", seed = 123)
+hour = mice::complete(imputacion)
+
+#The train set now is the entire dataset
+trainhour1 = hour
+```
+
+### Ridge regression
+
+```{r ridgehour}
+library(glmnet)
+
+X=model.matrix(Electricity ~.-1,data=trainhour1)
+
+fit.ridge=glmnet(X,trainhour1$Electricity,alpha=0)
+#Plot estimated coefficients for different values of the ridge parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to find the optimal lambda
+cv.out = cv.glmnet(X, trainhour1$Electricity, alpha = 0, nfolds=10) #alpha=0 means Ridge Regression
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients using the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+#A way to plot the coefficients
+modelo = glmnet(x = X,
+            y = trainhour1$Electricity,
+            alpha = 0,
+            lambda = cv.out$lambda.min)
+
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+### LASSO
+
+```{r lassohour}
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=trainhour1)
+
+fit.ridge=glmnet(X,trainhour1$Electricity,alpha=1)
+#Plot estimated coefficients for different values of the LASSO parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to find the optimal lambda
+cv.out = cv.glmnet(X, trainhour1$Electricity, alpha = 1, nfolds=10) #alpha=1 means LASSO
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients using the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+
+#A way to plot the coefficients
+modelo = glmnet(x = X,
+            y = trainhour1$Electricity,
+            alpha = 1,
+            lambda = cv.out$lambda.min)
+
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+### WE INTRODUCE DUMMYS
+
+```{r dummyhour}
+prueba=tfm_hour
+#Create a variable showing the day of the week
+prueba$Weekday = wday(prueba$Date, label = TRUE)
+#Creating the dummy variables
+dummy_week = model.matrix(~ Weekday - 1, data = prueba)
+colnames(dummy_week)=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thusday", "Friday", "Saturday")
+#Combine the dataset with the dummy variables
+prueba = cbind(prueba, dummy_week)
+
+#Change the format of the date to calculate easier the hour of the day
+prueba$Date = ymd_hms(prueba$Date)
+prueba$Date = as.POSIXct(prueba$Date, format = "%Y-%m-%d %H:%M:%S") + hours(1)
+#Create a variable showing the day of the week
+prueba$Hourday=hour(prueba$Date)
+prueba$Hourday=as.character(prueba$Hourday)
+#Creating the dummy variables
+dummy_hour = model.matrix(~ Hourday - 1, data = prueba)
+colnames(dummy_hour)=c("H0", "H1", "H10", "H11",  "H12", "H13", "H14", "H15", "H16", "H17", "H18", "H19",
+                      "H2", "H20", "H21", "H22",  "H23", "H3", "H4", "H5", "H6", "H7", "H8", "H9")
+#Combine the dataset with the dummy variables
+prueba = cbind(prueba, dummy_hour)
+
+#Remove the rows where there are lot of NAs in the price of gas variables
+prueba=prueba[-c(1:17832),]
+#Remove the Date variabel
+prueba=prueba[,-1]
+#Rename the rows
+rownames(prueba)=c(1:61791)
+#Remove the Weekday and Hourday variables
+prueba=prueba[,-c(17,25)]
+#Save and remove the response and dummy variables to standardize the rest
+y = prueba$Electricity
+weekhour=prueba[,c(17:47)]
+prueba=prueba[,-c(1,17:47)]
+
+#Standarization of the predictors
+data_scaled = scale(prueba)
+
+# Combination of the response variable, the dummy variables and the standardized predictors
+data_scaled = cbind(y, data_scaled,weekhour)
+
+
+hour=as.data.frame(data_scaled)
+names(hour)[1]="Electricity"
+
+#Remove the Balance_Morocco variables
+hour=hour[,-16]
+
+```
+
+
+```{r imphour2}
+library(mice)
+
+#Imputation of the missing values
+imputacion = mice(hour, m = 5, method = "rf", seed = 123)
+hour = mice::complete(imputacion)
+
+
+```
+
+
+```{r trainhour}
+library(caret)
+#We use 25% of the dataset to save a lot of computational time
+in_train = createDataPartition(hour$Electricity, p = 0.25, list = FALSE)
+trainhour1 = hour[in_train,]
+```
+
+
+
+### Random forest
+
+```{r ctrl}
+ctrl = trainControl(method = "cv", number = 3 ,
+                     verboseIter=T)
+```
+
+
+````{r rfhour}
+# Obtain the best model using random forest with ntree=200 and tuning for mtry
+rf.train = train(Electricity ~., 
+                  method = "rf", 
+                  data = trainhour1,
+                  preProcess = c("center", "scale"),
+                  ntree=200,
+                  tuneGrid = expand.grid(mtry=c(5:15)),
+                  trControl=ctrl)
+#To see the best model
+print(rf.train)
+
+#Plot variable importance
+rf_imp = varImp(rf.train, scale = F)
+plot(rf_imp, scales = list(y = list(cex = .57)))
+```
+
+### SVM
+
+```{r svmhour}
+# Obtain the best model using SVM with tuning for C and sigma
+svmFit = train(Electricity ~., method = "svmRadial", 
+                data = trainhour1,
+                preProcess = c("center", "scale"),
+                tuneGrid = expand.grid(C = c(.25, .5, 1,10,50,100,250,500,1000),
+                                      sigma = c(0,0.0005,0.001,0.01,.05,0.1)),
+                trControl=ctrl)
+#To see the best model
+print(svmFit)
+
+#Plot variable importance
+svmimp = varImp(svmFit, scale = F)
+plot(svmimp, scales = list(y = list(cex = .57)))
+```
+
+### KNN
+
+```{r knnhour}
+# Obtain the best model using KNN with tuning k (number of neighbors)
+knnFit = train(Electricity ~ ., 
+                method = "knn", 
+                data = trainhour1,
+                preProcess = c("center", "scale"),
+                tuneLength = 20,
+                trControl = ctrl)
+#To see the best model
+print(knnFit)
+
+#Plot variable importance
+knnimp = varImp(knnFit, scale = F)
+plot(knnimp, scales = list(y = list(cex = .57)))
+```
+
+### XGB
+```{r xgbhour, include=FALSE}
+# Obtain the best model using XGB with tuning for nrounds, eta, max_depth, gamma, colsample_bytree and min_child_weight
+xgb_grid = expand.grid(
+  nrounds = c(100,1000,2000),
+  eta = c(0.5,0.1,0.001),
+  max_depth = c(2,4,6),
+  gamma = c(0,10,100),
+  colsample_bytree = c(0.2,0.4,0.8),
+  min_child_weight = c(1,10,50),
+  subsample = 1)
+
+xgb.train = train(Electricity ~ .,  data=trainhour1,
+                  trControl = ctrl,
+                  maximize = F,
+                  tuneGrid = xgb_grid,
+                  preProcess = c("center", "scale"),
+                  method = "xgbTree",
+                  verbosity=0)
+```
+
+```{r xgbhresults}
+#To see the best model
+print(xgb.train)
+
+#Plot variable importance
+xgb_imp = varImp(xgb.train, scale = F)
+plot(xgb_imp, scales = list(y = list(cex = .57)))
+```
+
+
+## ALL DAILY DATABASE
+
+```{r prepday}
+
+prueba=tfm_daily
+#Remove the Date variable
+prueba=prueba[,-1]
+#Remove rows where there are lot of NAs in the price of gas variable
+prueba=prueba[-c(1:743),]
+#Rename the rows
+rownames(prueba)=c(1:2575)
+#Save and remove the response variable to standardize the rest
+y = prueba$Electricity
+prueba=prueba[,-15]
+#Standarization of the predictors
+data_scaled = scale(prueba)
+#Combination of the response variable and the standardized predictors
+data_scaled = cbind(y, data_scaled)
+
+
+day=as.data.frame(data_scaled)
+names(day)[1]="Electricity"
+
+```
+
+```{r impday}
+library(dplyr)
+library(mice)
+
+#Imputation of the missing values
+imputacion = mice(day, m = 5, method = "pmm", seed = 123)
+day = mice::complete(imputacion)
+
+#We use the entire dataset as the train set
+trainday = day
+
+
+```
+
+### RIDGE REGRESSION
+
+```{r ridgeday}
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=trainday)
+
+fit.ridge=glmnet(X,trainday$Electricity,alpha=0)
+#Plot estimated coefficients for different values of the ridge parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to find the optimal lambda
+cv.out = cv.glmnet(X, trainday$Electricity, alpha = 0, nfolds=10) #alpha=0 means Ridge Regression
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients using the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+#A way to plot the coefficients
+modelo = glmnet(x = X,
+            y = trainday$Electricity,
+            alpha = 0,
+            lambda = cv.out$lambda.min)
+
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+### LASSO
+
+```{r lassoday}
+library(glmnet)
+X=model.matrix(Electricity ~.-1,data=trainday)
+
+fit.ridge=glmnet(X,trainday$Electricity,alpha=1)
+#Plot estimated coefficients for different values of the LASSO parameter
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+#Cross validation to finde the optimal lambda
+cv.out = cv.glmnet(X, trainday$Electricity, alpha = 1, nfolds=10) #alpha=1 means Ridge Regression
+plot(cv.out)
+opt_lambda = cv.out$lambda.min
+opt_lambda
+
+#The predicted coefficients using the optimal lambda
+predict(fit.ridge, type = "coefficients", s = opt_lambda)
+#A way to plot the coefficients
+modelo = glmnet(x = X,
+            y = trainday$Electricity,
+            alpha = 1,
+            lambda = cv.out$lambda.min)
+
+df_coeficientes = coef(modelo) %>%
+                   as.matrix() %>%
+                   as_tibble(rownames = "predictor") %>%
+                   rename(coeficiente = s0)
+
+df_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() + labs(title = "Ridge regression coefficients") +
+  theme_bw() + theme(axis.text.x = element_text(size = 10, angle = 90))
+```
+
+### WE INTRODUCE DUMMYS
+```{r dummyday}
+library(lubridate)
+prueba=tfm_daily
+#Create a variable that shows the day of the week
+prueba$Weekday = wday(prueba$Date, label = TRUE)
+#Create the dummy variables
+dummy_week = model.matrix(~ Weekday - 1, data = prueba)
+
+colnames(dummy_week)=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thusday", "Friday", "Saturday")
+#Join the dataset and the dummy variables
+prueba = cbind(prueba, dummy_week)
+#Remove the Date and the Weekday variables
+prueba=prueba[,-22]
+prueba=prueba[,-1]
+#Remove the rows where there are lot of NAs in the price of gas variables
+prueba=prueba[-c(1:743),]
+#Rename the rows
+rownames(prueba)=c(1:2575)
+#Save and remove the response and dummy variable to standardize the rest
+y = prueba$Electricity
+week=prueba[,c(21:27)]
+prueba=prueba[,-c(15,21:27)]
+
+#Standarization of the predictors
+data_scaled = scale(prueba)
+#Combination of the response variable, the dummy variables and the standardized predictors
+data_scaled = cbind(y, data_scaled, week)
+
+day=as.data.frame(data_scaled)
+names(day)[1]="Electricity"
+```
+
+
+```{r impday2}
+library(dplyr)
+library(mice)
+
+#Imputation of the missing values
+imputacion = mice(day, m = 5, method = "pmm", seed = 123)
+day = mice::complete(imputacion)
+#The train set is the entire dataset
+trainday=day
+
+```
+
+### Random forest
+
+```{r ctrl2}
+ctrl = trainControl(method = "cv", number = 6 , verboseIter=T)
+```
+
+````{r rfday}
+# Obtain the best model using random forest for ntree=200 and tuning for mtry
+rf.train = train(Electricity ~., 
+                  method = "rf", 
+                  data = trainday,
+                  preProcess = c("center", "scale"),
+                  ntree=200,
+                  tuneGrid = expand.grid(mtry=c(5:25)),
+                  trControl=ctrl)
+#To see the best model
+print(rf.train)
+
+#Plot variable importance
+rf_imp = varImp(rf.train, scale = F)
+plot(rf_imp, scales = list(y = list(cex = .85)))
+```
+
+### SVM
+
+```{r svmday}
+# Obtain the best model using SVM with tuning for C and sigma
+svmFit = train(Electricity ~., method = "svmRadial", 
+                data = trainday,
+                preProcess = c("center", "scale"),
+                tuneGrid = expand.grid(C = c(.25, .5, 1,10,50,100,250,500,1000),
+                                      sigma = c(0,0.0005,0.001,0.01,.05,0.1)),
+                trControl=ctrl)
+#To see the best model
+print(svmFit)
+
+#Plot variable importance
+svmimp = varImp(svmFit, scale = F)
+plot(svmimp, scales = list(y = list(cex = .85)))
+```
+
+### KNN
+
+```{r knnday}
+# Obtain the best model using KNN with tuning for k (number of neighbors)
+knnFit = train(Electricity ~ ., 
+                method = "knn", 
+                data = trainday,
+                preProcess = c("center", "scale"),
+                tuneLength = 20,
+                trControl = ctrl)
+#To see the best model
+print(knnFit)
+
+#Plot variable importance
+knnimp = varImp(knnFit, scale = F)
+plot(knnimp, scales = list(y = list(cex = .85)))
+```
+
+### XGB
+```{r xgbday, include=FALSE}
+# Obtain the best model using XGB with tuning for nrounds, eta, max_depth, gamma, colsample_bytree and min_child_weight
+xgb_grid = expand.grid(
+  nrounds = c(100,1000,2000),
+  eta = c(0.5,0.1,0.001),
+  max_depth = c(2,4,6),
+  gamma = c(0,10,100),
+  colsample_bytree = c(0.2,0.4,0.8),
+  min_child_weight = c(1,10,50),
+  subsample = 1)
+
+xgb.train = train(Electricity ~ .,  data=trainday,
+                  trControl = ctrl,
+                  maximize = F,
+                  tuneGrid = xgb_grid,
+                  preProcess = c("center", "scale"),
+                  method = "xgbTree",
+                  verbosity=0)
+```
+
+
+```{r xgbdresults}
+#To see the best model
+print(xgb.train)
+
+#Plot variable importance
+xgb_imp = varImp(xgb.train, scale = F)
+plot(xgb_imp, scales = list(y = list(cex = .85)))
+```
+
+# PREDICTIONS
+
+## MONTHLY
+
+```{r prepmonth}
+prueba=tfm_monthly
+#Remove the Date variable
+prueba=prueba[,-1]
+
+#Save and remove the response variable to standardize the rest
+y = prueba$Electricity
+prueba=prueba[,-11]
+
+#Standarization of the predictors
+data_scaled = scale(prueba)
+
+#Combination of the response variable and the standardized predictors
+data_scaled = cbind(y, data_scaled)
+
+month=as.data.frame(data_scaled)
+names(month)[1]="Electricity"
+
+```
+
+
+
+```{r impmonth}
+library(dplyr)
+library(mice)
+
+#Imputation the missing values
+imputacion = mice(month, m = 5, method = "pmm", seed = 123)
+month = mice::complete(imputacion)
+```
+
+```{r traintestmonth}
+library(caret)
+set.seed(1234)
+#Divide into train and test set
+in_train = createDataPartition(month$Electricity, p = 0.5, list = FALSE)
+
+trainmonth = month[in_train,]
+testmonth = month[-in_train,]
+```
+
+
+## SVM
+
+```{r ctrl}
+ctrl = trainControl(method = "cv", number = 8 ,
+                     verboseIter=T)
+```
+
+```{r svmmonth}
+# Obtain the best model using the best method (SVM) tuning for C and sigma
+svmFitmonth = train(Electricity ~., method = "svmRadial", 
+                data = trainmonth,
+                preProcess = c("center", "scale"),
+                tuneGrid = expand.grid(C = c(80,100,120,250,500,1000,2000),
+                                      sigma = c(0.01,0.015,0.02,0.008,0.012,0.005)),
+                trControl=ctrl)
+#To see the best model
+print(svmFitmonth)
+
+#Plot variable importance
+svmimpmonth = varImp(svmFitmonth, scale = F)
+plot(svmimpmonth, scales = list(y = list(cex = .85)))
+```
+
+```{r}
+#Stay with 2022 rows and remove the Date variable
+prueba=tfm_monthly[c(145:157),-1]
+#Create the correlation matrix
+cor_matrix = cor(prueba)
+
+#A way to plot the 2022 correlations
+ggplot(data = melt(cor_matrix)) + 
+  geom_tile(aes(Var2, Var1, fill = value)) +
+  scale_fill_gradient2(low = "blue", high = "red", midpoint = 0, 
+                       limit = c(-1,1), name = "Correlation") +
+  coord_fixed() + theme_minimal() + theme(axis.text.x = element_text(angle = 90, vjust = 1, 
+                                    size = 8, hjust = 1))
+```
+
+
+
+```{r}
+#Save the response variable of the test set and remove it
+elec=testmonth$Electricity
+testmonth=testmonth[,-1]
+#Predictions of the response variable
+predicciones = predict(svmFitmonth, testmonth)
+print(predicciones)
+```
+
+```{r}
+#Absolute difference between real values and predictions
+diferencias = abs(elec - predicciones)
+#Mean difference
+mean(diferencias)
+
+#Barplot to visualize the difference
+barplot(diferencias, names.arg = 1:length(diferencias), 
+        ylab = "Difference", main = "Real vs. predictions difference")
+abline(h = 0, col = "red")
+```
+
+
+```{r}
+#Dataframe with the values of the three scenarios
+esc = data.frame(Hydraulic = c(4500, 3500, 1100),
+                   Pumping_Turbine = c(610, 445, 205),
+                   Nuclear = c(5300, 4910, 4076),
+                   Coal = c(258, 555, 981),
+                   Combined_cycle = c(2600, 5400, 9722),
+                   Wind = c(7900, 5678, 3677),
+                   Solar_Photovoltaic = c(3400, 2230, 1342),
+                   Solar_Thermal = c(650, 376, 89),
+                   Other_Renewables = c(270, 385, 451),
+                   Cogeneration = c(1765, 1410, 826),
+                   Consumption = c(30150, 28344, 26500),
+                   Gas_Price = c(81, 98, 157),
+                   CO2_Price = c(97, 85, 75),
+                   Balance_France = c(1650000, 850300, 133077),
+                   Balance_Portugal = c(-378000, 433582, 655324),
+                   Balance_Morocco = c(176500, 98826, -1453))
+
+#Standardize the values
+data_scaled = scale(esc)
+esc=as.data.frame(data_scaled)
+
+```
+
+```{r}
+#Predictions of the response variable
+predict(svmFitmonth, esc)
+```
+
+```{r}
+prueba=tfm_monthly
+#Extract the month
+fechas_convertidas = format(as.POSIXct(paste0("01/", prueba$Date), format = "%d/%m/%Y"), "%m")
+#Create a new variable showing the month of the yea
+prueba$Month = fechas_convertidas
+prueba$Month = as.numeric(prueba$Month)
+#Keeping with the most recent values to see that the change
+#from month to month is as up-to-date as possible. 
+prueba=prueba[c(97:157),-1]
+
+#Here we filter by each month of the year to obtain the average values of each predictor in each month of the year.
+#Here is the extraction of the Balance_Morocco variable
+marr=vector(length = 12)
+for (i in 1:12) {
+  #Filter the rows for the corresponding month
+  subset_data = subset(prueba, Month == i)  
+  #Calculate the average value for the corresponding month
+  valor_medio = mean(subset_data$Balance_Morocco)
+  marr[i]=valor_medio
+  #Print the results month by month
+  print(paste("Para el mes", i, "se obtiene un valor de:", valor_medio))
+}
+
+#With the values taken we calculate the values for each of the scenarios.
+#We also want the rise and fall to be proportional to the values we have for each month of the year.
+
+#Here is the step from hydraulic energy to the values we want in the third scenario.
+valor_original = 3500
+valor_nuevo = 1100
+
+proporcion_cambio = valor_nuevo/valor_original
+
+hydro3 = hydro * proporcion_cambio
+hydro3
+
+```
+
+```{r}
+#Dataframe with values of each month of the different scenarios
+esc = data.frame(Hydraulic = c(hydro1, hydro2, hydro3),
+                  Pumping_Turbine = c(pump1,pump2,pump3),
+                   Nuclear = c(nucl1, nucl2, nucl3),
+                   Coal = c(carb1, carb2, carb3),
+                   Combined_cycle = c(ccyc1, ccyc2, ccyc3),
+                   Wind = c(wind1, wind2, wind3),
+                   Solar_Photovoltaic = c(solph1, solph2, solph3),
+                   Solar_Thermal = c(solth1, solth2, solth3),
+                   Other_Renewables = c(other1, other2, other3),
+                   Cogeneration = c(cogen1, cogen2, cogen3),
+                   Consumption = c(consum1, consum2, consum3),
+                   Gas_Price = c(gasp1, gasp2, gasp3),
+                   CO2_Price = c(co2p1, co2p2, co2p3),
+                   Balance_France = c(france1, france2, france3),
+                   Balance_Portugal = c(portu1, portu2, portu3),
+                   Balance_Morocco = c(marr1, marr2, marr3))
+
+
+#Standarization of the values
+data_scaled = scale(esc)
+esc=as.data.frame(data_scaled)
+
+```
+
+```{r}
+#Predictions of the response variable
+predmonth=predict(svmFitmonth, esc)
+predmonth
+```
+
+```{r}
+#Create the line plot showing the predictions of a year month by month, having each scenario
+#in a different color
+Scenario = rep(1:3, each = 12)
+dataf = data.frame(Predictions = predmonth, Scenario = factor(Scenario))
+Month = rep(c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), times = 3)
+
+Month = factor(Month, levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"))
+
+ggplot(dataf, aes(x = Month, y = Predictions, group = Scenario, color = Scenario)) +
+  geom_line() + scale_color_manual(values = c("#f52f1d", "blue", "#0eb029")) +
+  theme_minimal()
+
+```
+
+## DAILY 
+
+```{r prepday}
+prueba=tfm_daily
+#Remove the Date variable
+prueba=prueba[,-1]
+#Remove the rows where there are lot of NAs in the price of gas variable
+prueba=prueba[-c(1:743),]
+#Rename the rows
+rownames(prueba)=c(1:2575)
+#Save and remove the response variable to standardize the rest
+y = prueba$Electricity
+prueba=prueba[,-15]
+
+#Standarization of the predictors
+data_scaled = scale(prueba)
+
+#Combination of the response variable and the standardized predictors
+data_scaled = cbind(y, data_scaled)
+
+
+day=as.data.frame(data_scaled)
+names(day)[1]="Electricity"
+
+```
+
+```{r impday}
+library(dplyr)
+library(mice)
+
+#Imputation of the missing values
+imputacion = mice(day, m = 5, method = "pmm", seed = 123)
+day = mice::complete(imputacion)
+
+
+```
+
+```{r traintestday}
+library(caret)
+set.seed(1234)
+#Divide into train and test set
+in_train = createDataPartition(day$Electricity, p = 0.7, list = FALSE)
+
+trainday = day[in_train,]
+testday = day[-in_train,]
+```
+
+```{r ctrl2}
+ctrl = trainControl(method = "cv", number = 8 ,
+                     verboseIter=T)
+```
+
+```{r svmday}
+# Obtain the best model using the best method (SVM) tuning for C and sigma
+svmFitday = train(Electricity ~., method = "svmRadial", 
+                data = trainday,
+                preProcess = c("center", "scale"),
+                tuneGrid = expand.grid(C = c(5,10,12,14,20,30,45,50),
+                                      sigma = c(0.01,0.015,0.02,0.008,0.012,0.005,0.003)),
+                trControl=ctrl)
+#To see the best model
+print(svmFitday)
+
+#Plot variable importance
+svmimpday = varImp(svmFitday, scale = F)
+plot(svmimpday, scales = list(y = list(cex = .85)))
+```
+
+```{r}
+#Choose the 2022 rows and remove the Date variable
+prueba=tfm_daily[c(2923:3318),-1]
+#Remove rows with missing values
+prueba=na.omit(prueba)
+#Create the correlation matrix
+cor_matrix = cor(prueba)
+
+#A way to plot the correlation matrix
+ggplot(data = melt(cor_matrix)) + 
+  geom_tile(aes(Var2, Var1, fill = value)) +
+  scale_fill_gradient2(low = "blue", high = "red", midpoint = 0, 
+                       limit = c(-1,1), name = "Correlation") +
+  coord_fixed() + theme_minimal() + theme(axis.text.x = element_text(angle = 90, vjust = 1, 
+                                    size = 8, hjust = 1))
+```
+
+```{r}
+#Save  and remove the response variable in the test set
+elec=testday$Electricity
+testday=testday[,-1]
+#Predict the response variable
+predicciones = predict(svmFitday, testday)
+print(predicciones)
+```
+
+```{r}
+#Absolute difference between real values and predictions
+diferencias = abs(elec - predicciones)
+#Mean absolute difference
+mean(diferencias)
+
+#Barplot to visualiza the differences
+barplot(diferencias, names.arg = 1:length(diferencias), xlab = "Índice",
+        ylab = "Diferencia", main = "Comparación de vectores")
+
+abline(h = 0, col = "red")
+```
+
+```{r}
+#Dataframe with real values and predictions
+data = data.frame(elec, predicciones)
+
+#Scatter plot of real values and predictions
+plot(data$elec, data$predicciones, 
+     xlab = "Real", ylab = "Predictions", main = "Prediction accuracy")
+
+#Red line to show the perfect prediction
+abline(0, 1, col = "red")
+```
+
+```{r}
+#Dataframe with values of the different scenarios
+esc = data.frame(Hydraulic = c(155040, 53045, 23078),
+                   Pumping_Turbine = c(13424, 10078, 6500),
+                   Nuclear = c(122686, 160748, 163776),
+                   Coal = c(9076, 17788, 30062),
+                   Combined_cycle = c(94564, 196560, 334220),
+                   Wind = c(428556, 213777, 132741),
+                   Solar_Photovoltaic = c(33540, 76441, 179943),
+                   Solar_Thermal = c(2800, 7753, 22489),
+                   Other_Renewables = c(9055, 11166, 12846),
+                   Cogeneration = c(20112, 52978, 77630),
+                   Consumption = c(22437, 25445, 28554),
+                   Gas_Price = c(85.78, 94.66, 126.41),
+                   CO2_Price = c(87.43, 80.66, 78.43),
+                   Balance_France = c(68770, 10333, -54431),
+                   Balance_Portugal = c(-3122, 32406, 76450),
+                   Balance_Morocco = c(19500, 5569, -3427),
+                   Diesel_Engine = c(5329,6904,7783),
+                   Steam_Turbine = c(5044,3351,2766),
+                   Gas_Turbine = c(807,1823,2344))
+
+#Standarization of the variables
+data_scaled = scale(esc)
+esc=as.data.frame(data_scaled)
+
+```
+
+```{r}
+#Predictions of the response variable
+predict(svmFitday, esc)
+```
+
+```{r}
+prueba=tfm_daily
+#Create a variable showing the day of the week
+prueba$Weekday = wday(prueba$Date, label = TRUE)
+#Transfer each day of the week to a number: Monday=1, Tuesday=2, etc.
+prueba$Weekday = gsub("lu\\\\.", "1", prueba$Weekday) 
+prueba$Weekday = gsub("ma\\\\.", "2", prueba$Weekday) 
+prueba$Weekday = gsub("mi\\\\.", "3", prueba$Weekday) 
+prueba$Weekday = gsub("ju\\\\.", "4", prueba$Weekday) 
+prueba$Weekday = gsub("vi\\\\.", "5", prueba$Weekday) 
+prueba$Weekday = gsub("sá\\\\.", "6", prueba$Weekday) 
+prueba$Weekday = gsub("do\\\\.", "7", prueba$Weekday)
+#Keeping with the most recent values to see that the change
+#from day to day is as up-to-date as possible.
+prueba$Weekday=as.numeric(prueba$Weekday)
+prueba=prueba[c(2775:3318),-1]
+#Imputation of the missing values
+imputacion = mice(prueba, m = 5, method = "pmm", seed = 123)
+prueba = mice::complete(imputacion)
+
+#Here we filter by each day of the week to obtain the average values of each predictor in each day of the week.
+#Here is the extraction of the Gas_Turbine variable
+gast=vector(length = 7)
+for (i in 1:7) {
+  #Filter the rows for the corresponding day of the week
+  subset_data = subset(prueba, Weekday == i)  
+  #Calculate the average value for the corresponding day of the week
+  valor_medio = mean(subset_data$Gas_Turbine)
+  gast[i]=valor_medio
+  #Print the results day by day
+  print(paste("Para el día", i, "se obtiene un valor de:", valor_medio))
+}
+
+#With the values taken we calculate the values for each of the scenarios.
+#We also want the rise and fall to be proportional to the values we have for each day of the week.
+
+#Here is the step from gas turbine energy to the values we want in the third scenario.
+valor_original = 1823
+valor_nuevo = 2344
+
+proporcion_cambio = valor_nuevo / valor_original
+
+gast3 = gast2 * proporcion_cambio
+gast3
+
+```
+
+```{r}
+#Dataframe with values of each day of the week for the different scenarios
+esc = data.frame(Hydraulic = c(hydro1, hydro2, hydro3),
+                  Pumping_Turbine = c(pump1,pump2,pump3),
+                   Nuclear = c(nucl1, nucl2, nucl3),
+                   Coal = c(carb1, carb2, carb3),
+                   Combined_cycle = c(ccyc1, ccyc2, ccyc3),
+                   Wind = c(wind1, wind2, wind3),
+                   Solar_Photovoltaic = c(solph1, solph2, solph3),
+                   Solar_Thermal = c(solth1, solth2, solth3),
+                   Other_Renewables = c(other1, other2, other3),
+                   Cogeneration = c(cogen1, cogen2, cogen3),
+                   Consumption = c(consum1, consum2, consum3),
+                   Gas_Price = c(gasp1, gasp2, gasp3),
+                   CO2_Price = c(co2p1, co2p2, co2p3),
+                   Balance_France = c(france1, france2, france3),
+                   Balance_Portugal = c(portu1, portu2, portu3),
+                   Balance_Morocco = c(marr1, marr2, marr3),
+                   Diesel_Engine = c(diesel1, diesel2, diesel3),
+                   Steam_Turbine = c(steam1, steam2, steam3),
+                   Gas_Turbine = c(gast1, gast2, gast3))
+
+
+#Standarization of the values
+data_scaled = scale(esc)
+esc=as.data.frame(data_scaled)
+
+```
+
+```{r}
+#Predictions of the response variable
+predday=predict(svmFitday, esc)
+predday
+```
+
+```{r}
+#Create the line plot showing the predictions of a week day by day, having each scenario
+#in a different color
+Scenario = rep(1:3, each = 7)
+dataf = data.frame(Predictions = predday, Scenario = factor(Scenario))
+Day = rep(c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"), times = 3)
+Day = factor(Day, levels = c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"))
+
+ggplot(dataf, aes(x = Day, y = Predictions, group = Scenario, color = Scenario)) +
+  geom_line() + scale_color_manual(values = c("#f52f1d", "blue", "#0eb029")) + theme_minimal()
+
+```
+
+## HOURLY
+
+```{r prephour}
+prueba=tfm_hour
+#Remove rows where there are lot of NAs in the price of gas variable
+prueba=prueba[-c(1:17832),]
+#Remove the Date variable
+prueba=prueba[,-1]
+#Rename the rows
+rownames(prueba)=c(1:61791)
+#Save and remove the response variable to standardize the rest
+y = prueba$Electricity
+prueba=prueba[,-1]
+
+#Standarization of the predictors
+data_scaled = scale(prueba)
+
+#Combination of the response variable and the standardized predictors
+data_scaled = cbind(y, data_scaled)
+
+
+hour=as.data.frame(data_scaled)
+names(hour)[1]="Electricity"
+#Remove the Balance_Morocco variable
+hour=hour[,-16]
+```
+
+```{r imphour}
+library(mice)
+#Imputation of missing values
+imputacion = mice(hour, m = 5, method = "pmm", seed = 123)
+hour = mice::complete(imputacion)
+```
+
+```{r traintesthour}
+library(caret)
+set.seed(1234)
+#Divide into train and test set
+in_train = createDataPartition(hour$Electricity, p = 0.8, list = FALSE)
+
+trainhour = hour[in_train,]
+testhour = hour[-in_train,]
+```
+
+```{r ctrl3}
+ctrl = trainControl(method = "cv", number = 5 ,
+                     verboseIter=T)
+```
+
+```{r xgbhour, include=FALSE}
+# Obtain the best model using the best method (XGB) with tuning for nrounds, eta, max_depth, gamma, colsample_bytree and min_child_weight
+xgb_grid = expand.grid(
+  nrounds = c(1000,1500,2000,2250),
+  eta = c(0.08,0.1,0.12),
+  max_depth = c(2,3,4,6),
+  gamma = c(0,3,7,10),
+  colsample_bytree = c(0.4,0.6,0.8),
+  min_child_weight = c(8,10,12),
+  subsample = 1)
+
+xgb.trainhour = train(Electricity ~ .,  data=trainhour,
+                  trControl = ctrl,
+                  maximize = F,
+                  tuneGrid = xgb_grid,
+                  preProcess = c("center", "scale"),
+                  method = "xgbTree",
+                  verbosity=0)
+```
+
+```{r resultsxgbhour}
+#To see the best model
+print(xgb.trainhour)
+
+#Plot variable importancd
+xgb_imphour = varImp(xgb.trainhour, scale = F)
+plot(xgb_imphour, scales = list(y = list(cex = .57)))
+```
+
+```{r}
+#Stay with 2022 rows and eliminate Date variable
+prueba=tfm_hour[c(70125:79623),-1]
+#Remove rows with NAs
+prueba=na.omit(prueba)
+#Create the correlation matrix
+cor_matrix = cor(prueba)
+
+#A way to plot the correlation matrix
+ggplot(data = melt(cor_matrix)) + 
+  geom_tile(aes(Var2, Var1, fill = value)) +
+  scale_fill_gradient2(low = "blue", high = "red", midpoint = 0, 
+                       limit = c(-1,1), name = "Correlation") +
+  coord_fixed() + theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, 
+                                    size = 8, hjust = 1))
+```
+
+```{r}
+#Save and remove the response variable in the test set
+elec=testhour$Electricity
+testhour=testhour[,-1]
+#Predictions of the response variable
+predicciones = predict(xgb.trainhour, testhour)
+print(predicciones)
+```
+
+```{r}
+#Absolute differences between real values and predictions
+diferencias = abs(elec - predicciones)
+#Mean absolute difference
+mean(diferencias)
+
+#Barplot to visualize the difference
+barplot(diferencias, names.arg = 1:length(diferencias), 
+        xlab = "Índice", ylab = "Diferencia", main = "Comparación de vectores")
+
+abline(h = 0, col = "red")
+```
+
+```{r}
+#Dataframe with real values and predictions
+data = data.frame(elec, predicciones)
+
+#Scatter plot shwoing real values and predictions
+plot(data$elec, data$predicciones, 
+     xlab = "Real", ylab = "Predictions", main = "Prediction accuracy")
+
+#Red line to show the perfect prediction
+abline(0, 1, col = "red")
+```
+
+```{r}
+#Dataframe with values of the different scenarios
+esc = data.frame(Hydraulic = c(8703, 2788, 564),
+                   Nuclear = c(4740, 6783, 7092),
+                   Coal = c(602, 998, 1676),
+                   Combined_cycle = c(2319, 9201, 18520),
+                   Wind = c(19656, 7841, 3842),
+                   Solar_Photovoltaic = c(16533, 11035, 4886),
+                   Solar_Thermal = c(7683, 3420, 1344),
+                   Other_Renewables = c(709, 533, 451),
+                   Cogeneration = c(2984, 1850, 1234),
+                   Consumption = c(21311, 27655, 31333),
+                   Gas_price = c(66.61, 100.63, 186.41),
+                   CO2_price = c(71.32, 80.78, 89.43),
+                   Balance_France = c(-4529, 885, 2356),
+                   Balance_Portugal = c(-3179, 342, 4057),
+                   Balance_Morocco = c(145, 335, 619))
+
+#Standarization of the values
+data_scaled = scale(esc)
+esc=as.data.frame(data_scaled)
+
+```
+
+```{r}
+#Predictions of the response variable
+predict(xgb.trainhour, esc)
+```
+
+```{r}
+prueba=tfm_hour
+#Create a variable showing the hour of the day of each row
+prueba$Date = ymd_hms(prueba$Date)
+prueba$Date = as.POSIXct(prueba$Date, format = "%Y-%m-%d %H:%M:%S") + hours(1)
+prueba$Hourday=hour(prueba$Date)
+#Keeping with the most recent values to see that the change
+#from hour to hour is as up-to-date as possible.
+prueba=prueba[c(66255:79623),-1]
+#Imputation of the missing values
+imputacion = mice(prueba, m = 5, method = "pmm", seed = 123)
+prueba = mice::complete(imputacion)
+
+#Here we filter by each hour of the day to obtain the average values of each predictor in each hour of the day.
+#Here is the extraction of the Balance_Morocco variable
+marr=vector(length = 24)
+for (i in 0:23) {
+  #Filter the rows for the corresponding hour of the day
+  subset_data = subset(prueba, Hourday == i)
+  #Calculate the average value for the corresponding hour of the day
+  valor_medio = mean(subset_data$Balance_Morocco)  
+  marr[i+1]=valor_medio
+  #Print the results hour by hour
+  print(paste("Para la hora", i, "se obtiene un valor de:", valor_medio))
+}
+
+#With the values taken we calculate the values for each of the scenarios.
+#We also want the rise and fall to be proportional to the values we have for each hour of the day.
+
+#Here is the step from cogeneration energy to the values we want in the third scenario.
+valor_original = 1850
+valor_nuevo = 1234
+
+proporcion_cambio = valor_nuevo / valor_original
+
+cogen3 = cogen2 * proporcion_cambio
+cogen3
+
+```
+
+```{r}
+#Dataframe with values of each hour of the day for the different scenarios
+esc = data.frame(Hydraulic = c(hydro1, hydro2, hydro3),
+                   Nuclear = c(nucl1, nucl2, nucl3),
+                   Coal = c(carb1, carb2, carb3),
+                   Combined_cycle = c(ccyc1, ccyc2, ccyc3),
+                   Wind = c(wind1, wind2, wind3),
+                   Solar_Photovoltaic = c(solph1, solph2, solph3),
+                   Solar_Thermal = c(solth1, solth2, solth3),
+                   Other_Renewables = c(other1, other2, other3),
+                   Cogeneration = c(cogen1, cogen2, cogen3),
+                   Consumption = c(consum1, consum2, consum3),
+                   Gas_price = c(gasp1, gasp2, gasp3),
+                   CO2_price = c(co2p1, co2p2, co2p3),
+                   Balance_France = c(france1, france2, france3),
+                   Balance_Portugal = c(portu1, portu2, portu3),
+                   Balance_Morocco = c(marr1, marr2, marr3))
+
+
+#Standarization of the values
+data_scaled = scale(esc)
+esc=as.data.frame(data_scaled)
+
+```
+
+```{r}
+#Predictions of the response variable
+predhour=predict(xgb.trainhour, esc)
+```
+
+```{r}
+#Create the line plot showing the predictions of a day hour by hour, having each scenario
+#in a different color
+Scenario = rep(1:3, each = 24)
+dataf = data.frame(Predictions = predhour, Scenario = factor(Scenario))
+Hour = rep(0:23, times = 3)
+
+
+ggplot(dataf, aes(x = Hour, y = Predictions, group = Scenario, color = Scenario)) +
+  geom_line() + scale_color_manual(values = c("#f52f1d", "blue", "#0eb029")) +
+  theme_minimal()
+
+```
+
+
+
